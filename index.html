@@ -16,7 +16,7 @@
 
     <div class="card" id="account-box">
       <div id="account-guest" style="display:flex; flex-direction:column; gap:10px;">
-        <div class="small">온라인 대전(코인 판돈)을 하려면 로그인이 필요합니다.</div>
+        <div class="small">온라인 대전(무작위 당첨금)을 하려면 로그인이 필요합니다.</div>
         <div class="btn-row">
           <button class="btn primary" data-go="login">👤 로그인</button>
           <button class="btn ghost" data-go="signup">📝 회원가입</button>
@@ -36,7 +36,7 @@
     <div class="card" style="display:flex; flex-direction:column; gap:10px;">
       <button class="btn primary" data-go="cpu-setup">🤖 컴퓨터와 대전 (혼자서)</button>
       <button class="btn primary" data-go="local-setup">📱 로컬 대전 (한 기기, 1:1 이상)</button>
-      <button class="btn accent2" id="menu-online-create">🌐 온라인 방 만들기 (코인 판돈)</button>
+      <button class="btn accent2" id="menu-online-create">🌐 온라인 방 만들기 (무작위 당첨금)</button>
       <button class="btn ghost" id="menu-online-join">🔑 온라인 방 참가</button>
     </div>
     <div class="card">
@@ -51,7 +51,7 @@
     </div>
     <div class="card small">
       <b>로컬 대전</b>: 같은 기기를 돌려가며 플레이 (2~6명)<br>
-      <b>온라인</b>: 각자 기기에서 방 코드로 접속해 실시간 대전 (로그인 필요, 코인 판돈)
+      <b>온라인</b>: 각자 기기에서 방 코드로 접속해 실시간 대전 (로그인 필요, 무작위 당첨금)
     </div>
   </section>
 
@@ -149,7 +149,7 @@
     <h1 class="logo" style="font-size:24px;">방 만들기</h1>
     <div class="card">
       <div class="small" style="margin-bottom:8px;">아이디: <b id="create-username">-</b> · 보유 코인 <b id="create-mycoins">0</b></div>
-      <div class="small" style="margin-bottom:14px;">💰 베팅이 아닙니다. 게임을 시작하면 참가비가 <b>5,000원~100,000원(5,000원 단위)</b> 중 무작위로 정해져 참가자 전원에게 부과되며, 이긴 사람이 판돈 전부를 가져갑니다.</div>
+      <div class="small" style="margin-bottom:14px;">🎁 베팅이 아닙니다. 코인은 차감되지 않으며, 게임을 시작하면 당첨금이 <b>5,000원~100,000원(5,000원 단위)</b> 중 무작위로 정해지고, 이긴 사람이 그 금액을 그대로 받습니다.</div>
       <label>방 공개 설정</label>
       <select id="create-public">
         <option value="1">🌐 공개 — 다른 사람이 방 코드 없이 "방 참가" 화면 목록에서 바로 참가</option>
@@ -187,7 +187,7 @@
       <div class="room-code" id="lobby-code">----</div>
       <div class="small">친구에게 이 코드를 알려주세요</div>
     </div>
-    <div class="card small" id="lobby-pot-box">💰 베팅이 아닙니다. 게임 시작 시 <b>5,000원~100,000원(5,000원 단위)</b> 참가비가 무작위로 정해져 전원에게 부과되며, 이긴 사람이 판돈 전부를 획득합니다.</div>
+    <div class="card small" id="lobby-pot-box">🎁 베팅이 아닙니다. 코인 차감 없이, 게임 시작 시 <b>5,000원~100,000원(5,000원 단위)</b> 당첨금이 무작위로 정해지고 이긴 사람이 그대로 받습니다.</div>
     <div class="card">
       <label>참가자 (<span id="lobby-count">0</span>명)</label>
       <ul class="player-list" id="lobby-players"></ul>

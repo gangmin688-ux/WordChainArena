@@ -27,7 +27,7 @@ function stopAllLoops() {
 Game.init();
 
 // ============================================================
-// 계정 (로그인 / 회원가입) — 온라인 대전(코인 판돈) 이용에 필요
+// 계정 (로그인 / 회원가입) — 온라인 대전(무작위 당첨금) 이용에 필요
 // ============================================================
 const AUTH = { username: null };
 
@@ -247,7 +247,7 @@ async function loadShop() {
 }
 
 // ============================================================
-// 코인 애니메이션 (판돈 모으기 / 획득)
+// 코인 애니메이션 (당첨금 표시 / 획득)
 // ============================================================
 function coinFx(count, toast) {
   const layer = document.getElementById('coin-fx-layer');
@@ -480,7 +480,7 @@ async function pollOnlineRoom() {
       }
       if ((room.pot || 0) > 0 && !ONLINE.potFxShown) {
         ONLINE.potFxShown = true;
-        coinFx(Math.min(10, (room.order || []).length * 2), `💰 판돈 ${room.pot.toLocaleString()} 코인이 모였습니다!`);
+        coinFx(Math.min(10, (room.order || []).length * 2), `🎁 당첨금 ${room.pot.toLocaleString()} 코인이 정해졌습니다!`);
       }
       renderOnlineGame(room);
     } else if (room.status === 'finished') {
@@ -576,7 +576,7 @@ function renderOnlineGame(room) {
   setLastWord(hist);
   renderHistory(hist);
   const badge = document.getElementById('game-pot-badge');
-  if ((room.pot || 0) > 0) { badge.classList.remove('hidden'); badge.textContent = `💰 판돈 ${room.pot.toLocaleString()} 코인`; }
+  if ((room.pot || 0) > 0) { badge.classList.remove('hidden'); badge.textContent = `🎁 당첨금 ${room.pot.toLocaleString()} 코인`; }
   else badge.classList.add('hidden');
 }
 
@@ -687,7 +687,7 @@ function endGame(winnerName, history, keepPoll, pot, winnerTitle) {
   const potBadge = document.getElementById('result-pot-badge');
   if (pot > 0) {
     potBadge.classList.remove('hidden');
-    potBadge.textContent = `${winnerName}님이 판돈 💰 ${pot.toLocaleString()} 코인 획득!`;
+    potBadge.textContent = `${winnerName}님이 당첨금 🎁 ${pot.toLocaleString()} 코인 획득!`;
     if (!ONLINE.payoutFxShown) {
       ONLINE.payoutFxShown = true;
       coinFx(10, `🏆 ${winnerName}님이 ${pot.toLocaleString()} 코인 획득!`);

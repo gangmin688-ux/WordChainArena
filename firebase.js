@@ -252,17 +252,9 @@ const FB = (() => {
   async function startGame(code, room) {
     Game.init();
     if (room.settings) Game.setSettings(room.settings);
-    const fee = randomEntryFee(); // 베팅이 아닌, 게임 시작 시 무작위로 정해지는 참가비 (5,000~100,000원, 5,000원 단위)
+    const prize = randomEntryFee(); // 베팅 아님: 차감 없이, 게임 시작 시 무작위로 정해지는 당첨금 (5,000~100,000원, 5,000원 단위)
     const fresh = (await getRoom(code)) || room;           // 최신 참가자 명단으로 순서 확정
     const order = orderFromPlayers(fresh.players, fresh.hostId);
-    // 시작 전 전원 잔액 확인 (부족하면 시작하지 않음)
-    for (const pid of order) {
-      const uname = (fresh.players[pid] || {}).name;
-      const w = await getWallet(uname);
-      if ((w.coins || 0) < fee) throw new Error(`${uname}님의 코인이 부족합니다. (보유 ${(w.coins || 0).toLocaleString()} / 필요 ${fee.toLocaleString()})`);
-    }
-    // 확인 후 전원 차감
-    for (const pid of order) await adjustWallet((fresh.players[pid] || {}).name, -fee);
     const st = Game.newStart();
     await patchRoom(code, {
       order,
@@ -272,8 +264,7 @@ const FB = (() => {
       history: [{ playerId: 'system', name: st.label, word: st.word || st.syll, ts: Date.now() }],
       turnStartedAt: Date.now(),
       turnIndex: 0,
-      entryFee: fee,
-      pot: fee * order.length,
+      pot: prize,
       payoutDone: false
     });
   }
