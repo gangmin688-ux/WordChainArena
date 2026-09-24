@@ -1,0 +1,97 @@
+:root {
+  --bg: #14161c;
+  --panel: #1e2129;
+  --panel2: #262a35;
+  --accent: #6fd0ff;
+  --accent2: #ff7a9e;
+  --text: #eef1f6;
+  --muted: #9aa1af;
+  --good: #57d68d;
+  --bad: #ff6b6b;
+  font-family: -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; min-height: 100%;
+  background: linear-gradient(160deg, #14161c, #1a1d26 60%, #14161c);
+  color: var(--text);
+}
+#app {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+}
+.screen { display: none; flex-direction: column; gap: 16px; flex: 1; }
+.screen.active { display: flex; }
+
+h1.logo { text-align: center; font-size: 34px; margin: 8px 0 0; letter-spacing: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.subtitle { text-align: center; color: var(--muted); margin-top: -8px; margin-bottom: 8px; font-size: 14px; }
+
+.card { background: var(--panel); border-radius: 16px; padding: 18px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+
+.btn {
+  display: block; width: 100%; padding: 14px 16px; border-radius: 12px;
+  border: none; font-size: 16px; font-weight: 600; cursor: pointer;
+  background: var(--panel2); color: var(--text); transition: transform .08s ease, background .15s;
+}
+.btn:active { transform: scale(.98); }
+.btn.primary { background: linear-gradient(90deg, var(--accent), #4fa9e0); color: #0b1220; }
+.btn.accent2 { background: linear-gradient(90deg, var(--accent2), #e0557a); color: #250; color:#2a0b12; }
+.btn.ghost { background: transparent; border: 1px solid #3a3f4c; }
+.btn.danger { background: var(--bad); color: #2a0000; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row .btn { flex: 1; }
+
+label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+input[type=text], input[type=number] {
+  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #333846;
+  background: #11131a; color: var(--text); font-size: 16px; margin-bottom: 14px;
+}
+input:focus { outline: 2px solid var(--accent); }
+
+.field { margin-bottom: 4px; }
+
+.player-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.player-list li {
+  padding: 10px 14px; border-radius: 10px; background: var(--panel2);
+  display: flex; justify-content: space-between; align-items: center; font-size: 15px;
+}
+.player-list li.turn { outline: 2px solid var(--accent); background: #223244; }
+.player-list li.dead { opacity: .4; text-decoration: line-through; }
+.tag { font-size: 11px; color: var(--muted); }
+
+.room-code { font-size: 40px; font-weight: 800; text-align: center; letter-spacing: 8px; color: var(--accent); margin: 6px 0; }
+
+.syllable-box { text-align: center; margin: 6px 0 0; }
+.syllable-box .req { font-size: 15px; color: var(--muted); }
+.syllable-box .letter {
+  font-size: 64px; font-weight: 800; color: var(--accent);
+  text-shadow: 0 0 24px rgba(111,208,255,.35);
+}
+
+.timer-wrap { height: 10px; border-radius: 6px; background: #10131a; overflow: hidden; }
+.timer-bar { height: 100%; background: linear-gradient(90deg, var(--good), var(--accent)); width: 100%; transition: width .2s linear, background .3s; }
+.timer-bar.warn { background: linear-gradient(90deg, #ffcf5c, var(--bad)); }
+
+.turn-status { text-align: center; font-size: 15px; color: var(--muted); }
+.turn-status.mine { color: var(--good); font-weight: 700; }
+
+.history { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 6px; padding: 4px; }
+.history .entry { font-size: 14px; padding: 6px 10px; border-radius: 8px; background: #171a22; display: flex; justify-content: space-between; }
+.history .entry .who { color: var(--muted); font-size: 12px; }
+
+.error-msg { color: var(--bad); font-size: 13px; min-height: 18px; margin-top: -8px; margin-bottom: 6px; }
+
+.center-msg { text-align: center; color: var(--muted); padding: 20px 0; }
+.winner-name { text-align: center; font-size: 30px; font-weight: 800; color: var(--good); margin: 10px 0; }
+
+.footer-note { text-align: center; font-size: 12px; color: #555b69; margin-top: auto; padding-top: 20px; }
+.hidden { display: none !important; }
+.row-gap { display: flex; gap: 8px; align-items: center; }
+.small { font-size: 12px; color: var(--muted); }
