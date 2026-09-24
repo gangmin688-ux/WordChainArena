@@ -57,6 +57,34 @@ const FB = (() => {
     }
   }
 
+  // ---- 접속자 / IP 차단 ----
+  const ipKey = ip => String(ip).replace(/[.:]/g, '_');
+  let cachedIP = null;
+  async function getIP() {
+    if (cachedIP) return cachedIP;
+    for (const u of ['https://api.ipify.org?format=json', 'https://api64.ipify.org?format=json']) {
+      try { const j = await (await fetch(u)).json(); if (j.ip) return (cachedIP = j.ip); } catch (e) { /* 다음 주소 시도 */ }
+    }
+    return null;
+  }
+  async function heartbeat(clientId, info) {
+    await fetch(`${BASE}/presence/${clientId}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(info) });
+  }
+  async function listPresence() { return (await (await fetch(`${BASE}/presence.json`)).json()) || {}; }
+  async function deletePresence(id) { await fetch(`${BASE}/presence/${id}.json`, { method: 'DELETE' }); }
+  async function isBlocked(ip) {
+    const res = await fetch(`${BASE}/blocked/${ipKey(ip)}.json`);
+    if (!res.ok) throw new Error('차단 목록 읽기 실패');
+    return (await res.json()) != null;
+  }
+  async function listBlocked() { return (await (await fetch(`${BASE}/blocked.json`)).json()) || {}; }
+  async function blockIP(ip, reason) {
+    const res = await fetch(`${BASE}/blocked/${ipKey(ip)}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip, reason: reason || '', at: Date.now() }) });
+    if (!res.ok) throw new Error('차단 실패 (Firebase 규칙에 /blocked 쓰기 권한이 필요합니다)');
+  }
+  async function unblockIP(ip) { await fetch(`${BASE}/blocked/${ipKey(ip)}.json`, { method: 'DELETE' }); }
+
   async function getConfig() {
     const res = await fetch(`${BASE}/config.json`);
     if (!res.ok) throw new Error('config 읽기 실패');
@@ -183,6 +211,7 @@ const FB = (() => {
 
   return {
     getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig, listRooms, resetRoom, sweep,
+    getIP, heartbeat, listPresence, deletePresence, isBlocked, listBlocked, blockIP, unblockIP,
     createRoom, joinRoom, startGame, submitWord,
     eliminateCurrentPlayer, nextAliveIndex, uid
   };

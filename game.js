@@ -158,7 +158,8 @@ const Game = (() => {
     return candidates(r, used)[0] || null;
   }
 
-  return { init, setSettings, getSettings, DEFAULTS, firstSyll: first, lastSyll: last, exists,
+  const words = () => { init(); return allWords; };
+  return { words, init, setSettings, getSettings, DEFAULTS, firstSyll: first, lastSyll: last, exists,
            validateMove, hasAnyContinuation, candidates, solve, winWords, newStart, hint,
            equivClass: acceptableStarts };
 })();

@@ -66,7 +66,6 @@ document.getElementById('local-start-btn').addEventListener('click', () => {
   if (st.word) LOCAL.usedWords.add(st.word);
   LOCAL.currentSyllable = st.syll;
   LOCAL.history = [{ who: st.label, word: st.word || st.syll }];
-  applyAssistUI();
   CURRENT_MODE = 'local'; LAST_MODE = 'local';
   document.getElementById('word-input').disabled = false;
   document.getElementById('submit-word-btn').disabled = false;
@@ -213,7 +212,7 @@ async function pollOnlineRoom() {
     const room = await FB.getRoom(ONLINE.code);
     if (!room) return;
     ONLINE.room = room;
-    if (room.settings) { Game.setSettings(room.settings); applyAssistUI(); }
+    if (room.settings) Game.setSettings(room.settings);
     if (room.status === 'waiting') {
       if (!document.getElementById('screen-lobby').classList.contains('active')) goScreen('lobby');   // 다시 플레이 → 대기실
       const isHost = room.hostId === ONLINE.myId;
@@ -479,53 +478,36 @@ function readSettings(p) {
   st.addEventListener('change', () => { sy.style.display = st.value === 'syll' ? 'block' : 'none'; });
 });
 
-function applyAssistUI() {
-  const on = Game.getSettings().assist;
-  document.getElementById('finder-btn').style.display = on ? '' : 'none';
-  if (!on) document.getElementById('finder').classList.add('hidden');
-}
-
-function renderFinder() {
-  const { syll, used } = currentCtx();
-  if (!syll) return;
-  const q = document.getElementById('finder-q').value.trim();
-  let list = Game.candidates(syll, used);
-  if (q) list = list.filter(w => w.includes(q));
-  document.getElementById('finder-count').textContent =
-    `'${syll}'(으)로 이을 수 있는 단어 ${list.length.toLocaleString()}개 중 무작위 30개 (눌러서 입력칸에 넣기)`;
-  const box = document.getElementById('finder-list');
-  box.innerHTML = '';
-  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
-  list.slice(0, 30).forEach(w => {
-    const b = document.createElement('button');
-    b.className = 'chip'; b.textContent = w;
-    b.addEventListener('click', () => { document.getElementById('word-input').value = w; });
-    box.appendChild(b);
-  });
-}
-document.getElementById('finder-btn').addEventListener('click', () => {
-  document.getElementById('finder').classList.toggle('hidden');
-  renderFinder();
-});
-document.getElementById('finder-reroll').addEventListener('click', renderFinder);
-document.getElementById('finder-q').addEventListener('input', renderFinder);
 
 // ============================================================
 // 관리자 접근 제어 (Firebase /config)
 // ============================================================
 const SITE = { blocked: false, msg: '' };
+let MY_IP = null;
 async function refreshSiteConfig() {
-  try {
-    const cfg = await FB.getConfig();
-    SITE.blocked = cfg.siteOpen === false;
-    SITE.msg = cfg.message || '현재 접속이 제한되어 있습니다.';
-  } catch (e) { return; }   // 읽기 실패 시 기존 상태 유지
+  let siteOff = false, msg = '현재 접속이 제한되어 있습니다.';
+  try { const cfg = await FB.getConfig(); siteOff = cfg.siteOpen === false; msg = cfg.message || msg; } catch (e) { return; }
+  if (!MY_IP) MY_IP = await FB.getIP();
+  let ipBlocked = false;
+  if (MY_IP) { try { ipBlocked = await FB.isBlocked(MY_IP); } catch (e) { /* 읽기 실패 시 통과 */ } }
+  SITE.ipBlocked = ipBlocked;
+  SITE.blocked = siteOff || ipBlocked;
+  SITE.msg = ipBlocked ? '🚫 관리자에 의해 접속이 차단되었습니다.' : msg;
   document.getElementById('site-overlay-msg').textContent = SITE.msg;
   document.getElementById('site-overlay').classList.toggle('hidden', !SITE.blocked);
   if (SITE.blocked) { stopAllLoops(); goScreen('menu'); }   // 진행 중인 게임/방 포함 전부 중단
 }
-refreshSiteConfig();
+async function heartbeat() {
+  if (!MY_IP || SITE.ipBlocked) return;
+  const sc = document.querySelector('.screen.active');
+  try {
+    await FB.heartbeat(ONLINE.myId, { ip: MY_IP, name: ONLINE.myName || '', screen: sc ? sc.id.replace('screen-', '') : '',
+      room: ONLINE.code || '', lastSeen: Date.now() });
+  } catch (e) { /* 무시 */ }
+}
+refreshSiteConfig().then(heartbeat);
 setInterval(refreshSiteConfig, 5000);
+setInterval(heartbeat, 10000);
 
 // ============================================================
 // 컴퓨터 대전 (일반 유저용)
@@ -609,3 +591,33 @@ document.querySelector('#screen-result [data-go="menu"]').addEventListener('clic
 document.getElementById('lobby-leave-btn').addEventListener('click', () => {
   if (ONLINE.room && ONLINE.room.hostId === ONLINE.myId && ONLINE.code) FB.deleteRoom(ONLINE.code);
 });
+
+// ============================================================
+// 메인 화면: 단어 확인 + 등록 단어 목록
+// ============================================================
+(() => {
+  const words = Game.words(), PAGE = 200;
+  let shown = 0;
+  document.getElementById('dict-total').textContent = words.length.toLocaleString();
+  function more() {
+    const box = document.getElementById('dict-list'), frag = document.createDocumentFragment();
+    words.slice(shown, shown + PAGE).forEach(w => {
+      const s = document.createElement('span');
+      s.className = 'chip'; s.style.cursor = 'default'; s.textContent = w;
+      frag.appendChild(s);
+    });
+    box.appendChild(frag);
+    shown = Math.min(words.length, shown + PAGE);
+    document.getElementById('dict-more').style.display = shown >= words.length ? 'none' : '';
+  }
+  document.getElementById('dict-more').addEventListener('click', more);
+  more();
+  document.getElementById('dict-q').addEventListener('input', e => {
+    const w = e.target.value.trim(), out = document.getElementById('dict-result');
+    if (!w) { out.textContent = ''; return; }
+    if (!/^[가-힣]+$/.test(w)) { out.style.color = 'var(--muted)'; out.textContent = '한글 단어만 확인할 수 있어요.'; return; }
+    const ok = Game.exists(w);
+    out.style.color = ok ? 'var(--good)' : 'var(--bad)';
+    out.textContent = ok ? `✅ '${w}' 은(는) 사전에 있는 단어입니다.` : `❌ '${w}' 은(는) 사전에 없는 단어입니다.`;
+  });
+})();

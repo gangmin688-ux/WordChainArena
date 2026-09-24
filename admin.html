@@ -32,6 +32,7 @@
     <button class="btn primary" data-tab="win">🏆 필승 단어 찾기</button>
     <button class="btn ghost" data-tab="game">🎮 게임 (vs 컴퓨터)</button>
     <button class="btn ghost" data-tab="online">🌐 온라인 대전</button>
+    <button class="btn ghost" data-tab="ip">🛡️ 접속자 / IP 차단</button>
     <button class="btn ghost" data-tab="lock">🔒 접근 제어</button>
     <button class="btn ghost" data-tab="dead">☠️ 한방 글자 목록</button>
   </div>
@@ -80,7 +81,7 @@
       <button class="btn primary" id="g-start">새 게임 시작</button>
     </div>
     <div id="g-board" class="hidden">
-      <div class="syllable-box"><div class="req">이 글자로 시작하는 단어를 입력하세요</div><div class="letter" id="g-syll">-</div></div>
+      <div class="syllable-box"><div class="req">이 글자로 시작하는 단어를 입력하세요</div><div class="letter" id="g-syll">-</div><div class="lastword" id="g-last"></div></div>
       <div class="card" style="margin-top:12px;">
         <div class="row-gap">
           <input type="text" id="g-in" placeholder="단어 입력" style="margin-bottom:0;">
@@ -121,7 +122,7 @@
         <div class="room-code" id="o-roomcode">----</div></div>
       <div class="card"><ul class="player-list" id="o-players"></ul></div>
       <button class="btn primary" id="o-start" style="display:none;">게임 시작</button>
-      <div class="syllable-box"><div class="letter" id="o-syll">-</div></div>
+      <div class="syllable-box"><div class="letter" id="o-syll">-</div><div class="lastword" id="o-last"></div></div>
       <div class="timer-wrap"><div class="timer-bar" id="o-bar"></div></div>
       <div class="turn-status" id="o-status">대기 중...</div>
       <div class="card">
@@ -139,6 +140,28 @@
       <div class="card"><label>기록</label><div class="history" id="o-hist"></div></div>
       <button class="btn ghost" id="o-leave">나가기</button>
     </div>
+  </section>
+
+  <!-- 접속자 / IP 차단 -->
+  <section id="tab-ip" class="screen" style="margin-top:16px;">
+    <div class="card">
+      <label>🟢 현재 접속 중 (최근 30초 이내 활동, 3초마다 갱신) <span id="ip-count"></span></label>
+      <div id="ip-online" class="small">불러오는 중...</div>
+    </div>
+    <div class="card">
+      <label>IP 직접 차단</label>
+      <div class="row-gap">
+        <input type="text" id="ip-input" placeholder="예: 123.45.67.89" style="margin-bottom:0;">
+        <input type="text" id="ip-reason" placeholder="사유 (선택)" style="margin-bottom:0;">
+        <button class="btn danger" id="ip-add" style="width:auto; padding:12px 18px;">차단</button>
+      </div>
+      <div class="error-msg" id="ip-err" style="margin-top:10px;"></div>
+    </div>
+    <div class="card">
+      <label>🚫 차단된 IP <span id="ban-count"></span></label>
+      <div id="ip-blocked" class="small">불러오는 중...</div>
+    </div>
+    <div class="small">IP는 접속자 브라우저가 알려주는 값이라 VPN·프록시를 쓰면 우회될 수 있고, 같은 공유기(같은 IP)를 쓰는 사람은 함께 차단됩니다.</div>
   </section>
 
   <!-- 접근 제어 -->
@@ -227,11 +250,21 @@ function run() {
     }));
   });
 }
+// ===== 직전 단어 표시 =====
+function lastWordHTML(pairs) {   // pairs: [[누가, 단어], ...]
+  for (let i = pairs.length - 1; i >= 0; i--) {
+    if (['시작 글자', '결과'].includes(pairs[i][0])) continue;
+    const w = pairs[i][1];
+    return '직전 단어: ' + esc(w.slice(0, -1)) + '<b>' + esc(w.slice(-1)) + '</b>';
+  }
+  return '';
+}
 // ===== 관리자 게임 (vs 컴퓨터) =====
 const G = { used: new Set(), syll: null, hist: [], over: false, ban: false };
 function gRender() {
   $('g-board').classList.remove('hidden');
   $('g-syll').textContent = G.syll;
+  $('g-last').innerHTML = lastWordHTML(G.hist);
   $('g-hist').innerHTML = G.hist.map(([who, w]) => `<div class="entry"><span>${esc(w)}</span><span class="who">${who}</span></div>`).join('');
   $('g-in').disabled = $('g-send').disabled = G.over;
 }
@@ -346,6 +379,7 @@ function oRender() {
   }).join('');
   $('o-start').style.display = r.status === 'waiting' && r.hostId === O.id ? 'block' : 'none';
   $('o-syll').textContent = r.currentSyllable || '-';
+  $('o-last').innerHTML = lastWordHTML((r.history || []).map(h => [h.name, h.word]));
   $('o-hist').innerHTML = (r.history || []).map(h => `<div class="entry"><span>${esc(h.word)}</span><span class="who">${esc(h.name)}</span></div>`).join('');
   if (r.status === 'finished') {
     const w = r.winnerId && r.players[r.winnerId] ? r.players[r.winnerId].name : '무승부';
@@ -407,6 +441,58 @@ async function lSet(open) {
 $('l-off').addEventListener('click', () => lSet(false));
 $('l-on').addEventListener('click', () => lSet(true));
 lRefresh();
+
+// ===== 접속자 / IP 차단 =====
+let ADMIN_IP = null;
+const ago = t => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}초 전` : `${Math.floor(s / 60)}분 전`; };
+const SCREEN_KO = { menu: '메인', 'local-setup': '로컬 설정', 'cpu-setup': '컴퓨터 설정', 'online-create': '방 만들기', 'online-join': '방 참가', lobby: '대기실', game: '게임 중', result: '결과' };
+async function ipRefresh() {
+  if (!$('tab-ip').classList.contains('active')) return;
+  try {
+    if (!ADMIN_IP) ADMIN_IP = await FB.getIP();
+    const [pres, ban] = await Promise.all([FB.listPresence(), FB.listBlocked()]);
+    const now = Date.now(), groups = {};
+    Object.entries(pres).forEach(([id, p]) => {
+      if (!p) return;
+      if (now - p.lastSeen > 10 * 60e3) { FB.deletePresence(id); return; }
+      if (now - p.lastSeen > 30e3) return;
+      (groups[p.ip] = groups[p.ip] || []).push(p);
+    });
+    const ips = Object.keys(groups);
+    $('ip-count').textContent = `(${ips.length}개 IP / ${Object.values(groups).reduce((a, g) => a + g.length, 0)}명)`;
+    $('ip-online').innerHTML = ips.length ? ips.map(ip => {
+      const g = groups[ip], last = Math.max(...g.map(x => x.lastSeen));
+      const info = g.map(x => `${esc(x.name || '익명')}(${SCREEN_KO[x.screen] || esc(x.screen || '')}${x.room ? ' · 방 ' + esc(x.room) : ''})`).join(', ');
+      const banned = !!ban[ip.replace(/[.:]/g, '_')];
+      return `<div class="ans" style="cursor:default; flex-wrap:wrap;"><b>${esc(ip)}</b>${ip === ADMIN_IP ? '<span class="badge d0">내 IP</span>' : ''}
+        <span class="small">${info} · ${ago(last)}</span>
+        <button class="btn ${banned ? 'ghost' : 'danger'}" data-ip="${esc(ip)}" data-act="${banned ? 'unban' : 'ban'}" style="width:auto; padding:6px 14px; font-size:14px; margin-left:auto;">${banned ? '차단됨 · 해제' : '차단'}</button></div>`;
+    }).join('') : '현재 접속 중인 사용자가 없습니다.';
+    const bl = Object.values(ban).filter(Boolean).sort((a, b) => b.at - a.at);
+    $('ban-count').textContent = `(${bl.length}개)`;
+    $('ip-blocked').innerHTML = bl.length ? bl.map(b => `<div class="ans" style="cursor:default; flex-wrap:wrap;"><b>${esc(b.ip)}</b>
+      <span class="small">${b.reason ? esc(b.reason) + ' · ' : ''}${new Date(b.at).toLocaleString('ko-KR')}</span>
+      <button class="btn ghost" data-ip="${esc(b.ip)}" data-act="unban" style="width:auto; padding:6px 14px; font-size:14px; margin-left:auto;">차단 해제</button></div>`).join('') : '차단된 IP가 없습니다.';
+    document.querySelectorAll('#tab-ip button[data-ip]').forEach(btn => btn.addEventListener('click', () => ipAct(btn.dataset.act, btn.dataset.ip)));
+  } catch (e) { $('ip-online').textContent = '불러오지 못했습니다. (Firebase 규칙에서 /presence, /blocked 읽기/쓰기를 열어주세요)'; }
+}
+async function ipAct(act, ip, reason) {
+  $('ip-err').textContent = '';
+  try {
+    if (act === 'ban') {
+      if (ip === ADMIN_IP && !confirm('내 IP입니다. 정말 차단할까요? (관리자 패널은 계속 열립니다)')) return;
+      await FB.blockIP(ip, reason);
+    } else await FB.unblockIP(ip);
+    ipRefresh();
+  } catch (e) { $('ip-err').textContent = e.message; }
+}
+$('ip-add').addEventListener('click', () => {
+  const ip = $('ip-input').value.trim();
+  if (!/^[0-9a-fA-F.:]{3,45}$/.test(ip)) { $('ip-err').textContent = 'IP 형식이 올바르지 않습니다.'; return; }
+  ipAct('ban', ip, $('ip-reason').value.trim()); $('ip-input').value = ''; $('ip-reason').value = '';
+});
+setInterval(ipRefresh, 3000);
+document.querySelector('[data-tab="ip"]').addEventListener('click', () => setTimeout(ipRefresh, 50));
 
 $('go-btn').addEventListener('click', run);
 $('in-word').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });

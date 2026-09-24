@@ -40,7 +40,7 @@ Firebase 콘솔 > Realtime Database > 규칙(Rules)에서 아래처럼 /rooms �
 }
 
 (접근 제어 기능을 쓰려면 /config 도 같은 방식으로 열어야 합니다)
-{ "rules": { "rooms": {".read": true, ".write": true}, "config": {".read": true, ".write": true} } }
+{ "rules": { "rooms": {".read": true, ".write": true}, "config": {".read": true, ".write": true}, "presence": {".read": true, ".write": true}, "blocked": {".read": true, ".write": true} } }
 
 규칙이 막혀 있으면 "방 생성에 실패했습니다" 같은 오류가 표시됩니다.
 (보안이 필요하다면 추후 Firebase Auth를 붙여 uid 기반 규칙으로 강화할 수 있습니다.)
@@ -89,3 +89,12 @@ Firebase 콘솔 > Realtime Database > 규칙(Rules)에서 아래처럼 /rooms �
 - 사이트 이름을 WordChainArena 로 변경.
 - 방장이 최소/최대 글자 수를 직접 지정 (최대는 비우면 제한 없음).
 - 끝난 방 자동 삭제: 종료 3분 후(다시 플레이를 안 하면) / 방장이 결과화면·대기실에서 나가면 즉시 / 생성 6시간 경과 방.
+
+[v10 변경]
+- 일반 화면의 단어 찾기 기능 제거.
+- 메인 화면에 "단어 확인"(입력한 단어가 사전에 있는지만 알려줌) + 등록된 단어 목록(200개씩 더 보기) 추가.
+- 관리자 패널 게임/온라인 화면에 직전 단어 표시.
+
+[v11 변경]
+- admin.html "접속자 / IP 차단" 탭: 현재 접속 중인 IP 목록(닉네임·화면·방 코드 포함), IP 차단/해제, IP 직접 입력 차단, 차단 목록.
+- 차단된 IP로 접속하면 전체 잠금 화면이 표시됩니다. (Firebase 규칙에 /presence, /blocked 추가 필요)

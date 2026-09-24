@@ -20,6 +20,16 @@
       <button class="btn accent2" data-go="online-create">🌐 온라인 방 만들기</button>
       <button class="btn ghost" data-go="online-join">🔑 온라인 방 참가</button>
     </div>
+    <div class="card">
+      <label>📖 단어 확인</label>
+      <input type="text" id="dict-q" placeholder="단어를 입력하면 사전에 있는지 알려줘요 (예: 놈팽이)" style="margin-bottom:8px;">
+      <div id="dict-result" style="min-height:22px; font-weight:700;"></div>
+    </div>
+    <div class="card">
+      <label>등록된 단어 (총 <span id="dict-total">0</span>개)</label>
+      <div class="chips" id="dict-list" style="max-height:260px; overflow-y:auto; margin-bottom:10px;"></div>
+      <button class="btn ghost" id="dict-more">더 보기</button>
+    </div>
     <div class="card small">
       <b>로컬 대전</b>: 같은 기기를 돌려가며 플레이 (2~6명)<br>
       <b>온라인</b>: 각자 기기에서 방 코드로 접속해 실시간 대전
@@ -125,18 +135,8 @@
       </div>
       <div class="error-msg" id="word-error"></div>
       <div class="btn-row">
-        <button class="btn ghost" id="finder-btn">🔍 단어 찾기</button>
         <button class="btn danger" id="giveup-btn">포기</button>
       </div>
-    </div>
-
-    <div class="card hidden" id="finder">
-      <div class="row-gap">
-        <input type="text" id="finder-q" placeholder="포함할 글자로 좁히기 (선택)" style="margin-bottom:0;">
-        <button class="btn ghost" id="finder-reroll" style="width:auto; padding:12px 14px;">🔄</button>
-      </div>
-      <div class="small" id="finder-count" style="margin:8px 0;"></div>
-      <div class="chips" id="finder-list"></div>
     </div>
 
     <div class="card">
