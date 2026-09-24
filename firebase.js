@@ -32,6 +32,31 @@ const FB = (() => {
     await fetch(`${BASE}/rooms/${code}.json`, { method: 'DELETE' });
   }
 
+  async function listRooms() {
+    const res = await fetch(`${BASE}/rooms.json`);
+    if (!res.ok) throw new Error('방 목록을 불러오지 못했습니다.');
+    return (await res.json()) || {};
+  }
+  // 게임 종료 후 같은 방에서 다시 플레이: 대기실 상태로 초기화
+  async function resetRoom(code, room) {
+    const players = {};
+    Object.keys(room.players || {}).forEach(pid => { players[pid] = { ...room.players[pid], alive: true }; });
+    await patchRoom(code, { players, status: 'waiting', turnIndex: 0, usedWords: [], history: [],
+      currentSyllable: null, winnerId: null, turnStartedAt: null });
+  }
+
+  // 끝난 방(3분 경과)·오래된 방(6시간) 자동 삭제
+  async function sweep(rooms) {
+    rooms = rooms || await listRooms();
+    const now = Date.now();
+    for (const [code, r] of Object.entries(rooms)) {
+      if (!r) continue;
+      const doneStale = r.status === 'finished' && now - (r.finishedAt || r.turnStartedAt || r.createdAt || 0) > 3 * 60e3;
+      const oldStale = now - (r.createdAt || 0) > 6 * 3600e3;
+      if (doneStale || oldStale) await deleteRoom(code);
+    }
+  }
+
   async function getConfig() {
     const res = await fetch(`${BASE}/config.json`);
     if (!res.ok) throw new Error('config 읽기 실패');
@@ -139,6 +164,7 @@ const FB = (() => {
       await patchRoom(code, {
         players,
         status: 'finished',
+        finishedAt: Date.now(),
         winnerId: aliveIds[0] || null
       });
       return;
@@ -156,7 +182,7 @@ const FB = (() => {
   }
 
   return {
-    getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig,
+    getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig, listRooms, resetRoom, sweep,
     createRoom, joinRoom, startGame, submitWord,
     eliminateCurrentPlayer, nextAliveIndex, uid
   };

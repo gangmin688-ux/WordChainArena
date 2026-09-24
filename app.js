@@ -10,6 +10,7 @@ document.querySelectorAll('[data-go]').forEach(el => {
   });
 });
 
+let LAST_MODE = null; // 'local' | 'cpu' | 'online' (다시 플레이용)
 let CURRENT_MODE = null; // 'local' | 'online' | null
 
 function stopAllLoops() {
@@ -66,7 +67,7 @@ document.getElementById('local-start-btn').addEventListener('click', () => {
   LOCAL.currentSyllable = st.syll;
   LOCAL.history = [{ who: st.label, word: st.word || st.syll }];
   applyAssistUI();
-  CURRENT_MODE = 'local';
+  CURRENT_MODE = 'local'; LAST_MODE = 'local';
   document.getElementById('word-input').disabled = false;
   document.getElementById('submit-word-btn').disabled = false;
   startLocalTurn();
@@ -195,7 +196,7 @@ document.getElementById('join-room-btn').addEventListener('click', async () => {
 });
 
 function enterLobby(isHost) {
-  CURRENT_MODE = 'online';
+  CURRENT_MODE = 'online'; LAST_MODE = 'online'; ONLINE.resultShown = false;
   goScreen('lobby');
   document.getElementById('lobby-code').textContent = ONLINE.code;
   document.getElementById('lobby-start-btn').style.display = isHost ? 'block' : 'none';
@@ -214,6 +215,12 @@ async function pollOnlineRoom() {
     ONLINE.room = room;
     if (room.settings) { Game.setSettings(room.settings); applyAssistUI(); }
     if (room.status === 'waiting') {
+      if (!document.getElementById('screen-lobby').classList.contains('active')) goScreen('lobby');   // 다시 플레이 → 대기실
+      const isHost = room.hostId === ONLINE.myId;
+      document.getElementById('lobby-start-btn').style.display = isHost ? 'block' : 'none';
+      document.getElementById('lobby-wait-msg').style.display = isHost ? 'none' : 'block';
+      document.getElementById('lobby-code').textContent = ONLINE.code;
+      ONLINE.resultShown = false; ONLINE.eliminating = false;
       renderLobby(room);
     } else if (room.status === 'playing') {
       if (!document.getElementById('screen-game').classList.contains('active')) {
@@ -223,11 +230,13 @@ async function pollOnlineRoom() {
       }
       renderOnlineGame(room);
     } else if (room.status === 'finished') {
-      clearInterval(ONLINE.pollHandle);
-      clearInterval(ONLINE.tickHandle);
-      const winnerName = room.winnerId && room.players[room.winnerId] ? room.players[room.winnerId].name : '무승부';
-      const hist = (room.history || []).map(h => ({ who: h.name, word: h.word }));
-      endGame(winnerName, hist);
+      clearInterval(ONLINE.tickHandle);   // 폴링은 유지 (방장이 다시 플레이를 누르면 대기실로 복귀)
+      if (!ONLINE.resultShown) {
+        ONLINE.resultShown = true;
+        const winnerName = room.winnerId && room.players[room.winnerId] ? room.players[room.winnerId].name : '무승부';
+        const hist = (room.history || []).map(h => ({ who: h.name, word: h.word }));
+        endGame(winnerName, hist, true);
+      }
     }
   } catch (e) {
     console.error(e);
@@ -299,7 +308,9 @@ function renderOnlineGame(room) {
   }));
   renderPlayerList(playersArr, room.turnIndex);
   document.getElementById('game-syllable').textContent = room.currentSyllable || '-';
-  renderHistory((room.history || []).map(h => ({ who: h.playerId === 'system' ? h.name : h.name, word: h.word })));
+  const hist = (room.history || []).map(h => ({ who: h.name, word: h.word }));
+  setLastWord(hist);
+  renderHistory(hist);
 }
 
 async function onlineSubmit(word) {
@@ -316,7 +327,18 @@ async function onlineSubmit(word) {
 // ============================================================
 // 공통 UI 헬퍼
 // ============================================================
+function setLastWord(history) {
+  const el = document.getElementById('game-lastword');
+  let w = null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (['탈락', '시스템', '시작 글자'].includes(history[i].who)) continue;
+    w = history[i].word; break;
+  }
+  el.innerHTML = w ? '직전 단어: ' + w.slice(0, -1) + '<b>' + w.slice(-1) + '</b>' : '';
+}
+
 function renderGameCommon(players, turnIndex, syllable, history) {
+  setLastWord(history);
   renderPlayerList(players, turnIndex);
   document.getElementById('game-syllable').textContent = syllable || '-';
   renderHistory(history);
@@ -385,8 +407,14 @@ document.getElementById('giveup-btn').addEventListener('click', () => {
   }
 });
 
-function endGame(winnerName, history) {
-  stopAllLoops();
+function endGame(winnerName, history, keepPoll) {
+  if (!keepPoll) stopAllLoops();
+  const rb = document.getElementById('replay-btn'), note = document.getElementById('replay-note');
+  if (LAST_MODE === 'online') {
+    const host = ONLINE.room && ONLINE.room.hostId === ONLINE.myId;
+    rb.style.display = host ? 'block' : 'none';
+    note.textContent = host ? '' : '방장이 다시 플레이를 누르면 대기실로 이동합니다.';
+  } else { rb.style.display = 'block'; note.textContent = ''; }
   document.getElementById('result-winner').textContent = `🏆 ${winnerName}`;
   const el = document.getElementById('result-history');
   el.innerHTML = '';
@@ -412,14 +440,16 @@ function settingsHTML(p, defSec) {
   return `<div class="set-title">⚙️ 게임 설정</div>
   <label>두음법칙</label>
   <select id="${p}-dueum">
-    <option value="full">적용 – 끄글 방식 (양방향: 나↔라, 여↔려↔녀)</option>
+    <option value="full">적용 – 기본 방식 (양방향: 나↔라, 여↔려↔녀)</option>
     <option value="std">적용 – 표준 (라→나, 려·녀→여 한 방향만)</option>
     <option value="none">적용 안 함 (글자 그대로)</option>
   </select>
   <label>제한 시간 (초)</label>
   <input type="number" id="${p}-sec" min="5" max="120" value="${defSec}">
-  <label>최소 단어 길이</label>
-  <select id="${p}-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select>
+  <div style="display:flex; gap:10px;">
+    <div style="flex:1"><label>최소 글자 수</label><input type="number" id="${p}-minlen" min="2" max="20" value="2"></div>
+    <div style="flex:1"><label>최대 글자 수</label><input type="number" id="${p}-maxlen" min="2" max="20" placeholder="제한 없음"></div>
+  </div>
   <label>한방 단어 (상대가 이을 수 없는 단어)</label>
   <select id="${p}-hanbang"><option value="allow">허용</option><option value="ban">금지</option></select>
   <label>시작 방식</label>
@@ -429,10 +459,13 @@ function settingsHTML(p, defSec) {
 
 function readSettings(p) {
   const v = id => document.getElementById(p + '-' + id);
+  const minLen = Math.max(2, Math.min(20, parseInt(v('minlen').value) || 2));
+  let maxLen = Math.max(0, Math.min(20, parseInt(v('maxlen').value) || 0));
+  if (maxLen && maxLen < minLen) maxLen = minLen;
   return {
     dueum: v('dueum').value,
     turnSeconds: Math.max(5, Math.min(120, parseInt(v('sec').value) || 30)),
-    minLen: parseInt(v('minlen').value),
+    minLen, maxLen,
     banHanbang: v('hanbang').value === 'ban',
     startMode: v('start').value,
     startSyll: (v('syll').value || '').trim(),
@@ -509,7 +542,7 @@ document.getElementById('cpu-start-btn').addEventListener('click', () => {
   if (st.word) LOCAL.usedWords.add(st.word);
   LOCAL.currentSyllable = st.syll;
   LOCAL.history = [{ who: st.label, word: st.word || st.syll }];
-  CURRENT_MODE = 'local';
+  CURRENT_MODE = 'local'; LAST_MODE = 'cpu';
   document.getElementById('word-input').disabled = false;
   document.getElementById('submit-word-btn').disabled = false;
   startLocalTurn();
@@ -556,3 +589,23 @@ function maybeCpu() {
     renderGameCommon(LOCAL.players, LOCAL.turnIndex, LOCAL.currentSyllable, LOCAL.history);
   }, 700 + Math.random() * 700);
 }
+
+document.getElementById('replay-btn').addEventListener('click', async () => {
+  if (LAST_MODE === 'local') document.getElementById('local-start-btn').click();
+  else if (LAST_MODE === 'cpu') document.getElementById('cpu-start-btn').click();
+  else if (LAST_MODE === 'online' && ONLINE.room && ONLINE.room.hostId === ONLINE.myId) {
+    try { await FB.resetRoom(ONLINE.code, ONLINE.room); } catch (e) { alert(e.message); }
+  }
+});
+
+// ============================================================
+// 방 자동 정리 (끝난 방 삭제)
+// ============================================================
+FB.sweep().catch(() => {});
+setInterval(() => FB.sweep().catch(() => {}), 60000);
+document.querySelector('#screen-result [data-go="menu"]').addEventListener('click', () => {
+  if (LAST_MODE === 'online' && ONLINE.room && ONLINE.room.hostId === ONLINE.myId && ONLINE.code) FB.deleteRoom(ONLINE.code);
+});
+document.getElementById('lobby-leave-btn').addEventListener('click', () => {
+  if (ONLINE.room && ONLINE.room.hostId === ONLINE.myId && ONLINE.code) FB.deleteRoom(ONLINE.code);
+});

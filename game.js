@@ -1,6 +1,6 @@
-// ===== 끄글 (끝말잇기) 핵심 로직 + 설정 + 필승 분석 엔진 =====
+// ===== WordChainArena (끝말잇기) 핵심 로직 + 설정 + 필승 분석 엔진 =====
 const Game = (() => {
-  const DEFAULTS = { dueum: 'full', minLen: 2, turnSeconds: 30, banHanbang: false,
+  const DEFAULTS = { dueum: 'full', minLen: 2, maxLen: 0, turnSeconds: 30, banHanbang: false,
                      startMode: 'random', startSyll: '', assist: true };
   let S = { ...DEFAULTS };
   let wordSet = null, allWords = null;
@@ -23,7 +23,7 @@ const Game = (() => {
   function acceptableStarts(r) {
     const eq = window.EQUIV_MAP[r];
     const cls = eq && eq.length ? eq : [r];
-    if (S.dueum === 'full') return cls;                 // 끄글 데이터 그대로 (양방향 동치)
+    if (S.dueum === 'full') return cls;                 // 기본 데이터 그대로 (양방향 동치)
     if (S.dueum === 'none' || cls.length < 2) return [r];
     const ri = initial(r);                              // 표준: 한 방향만 (ㄹ→ㄴ/ㅇ, ㄴ→ㅇ)
     return cls.filter(m => m === r ||
@@ -33,11 +33,11 @@ const Game = (() => {
 
   function bucket() {
     init();
-    const k = S.dueum + '|' + S.minLen;
+    const k = S.dueum + '|' + S.minLen + '|' + S.maxLen;
     if (cache[k]) return cache[k];
     const ix = new Map();
     for (const w of allWords) {
-      if (w.length < S.minLen || !HANGUL.test(w)) continue;
+      if (w.length < S.minLen || (S.maxLen && w.length > S.maxLen) || !HANGUL.test(w)) continue;
       const f = first(w);
       if (!ix.has(f)) ix.set(f, []);
       ix.get(f).push(w);
@@ -66,6 +66,7 @@ const Game = (() => {
     word = (word || '').trim();
     if (!word) return { ok: false, reason: '단어를 입력하세요.' };
     if (word.length < S.minLen) return { ok: false, reason: `${S.minLen}글자 이상의 단어를 입력하세요.` };
+    if (S.maxLen && word.length > S.maxLen) return { ok: false, reason: `${S.maxLen}글자 이하의 단어를 입력하세요.` };
     if (!HANGUL.test(word)) return { ok: false, reason: '한글 단어만 입력할 수 있습니다.' };
     if (used.has(word)) return { ok: false, reason: '이미 사용된 단어입니다.' };
     if (requiredSyll && !acceptableStarts(requiredSyll).includes(first(word)))
@@ -141,7 +142,7 @@ const Game = (() => {
     let w;
     for (let i = 0; i < 3000; i++) {
       w = allWords[Math.floor(Math.random() * allWords.length)];
-      if (w.length < S.minLen || w.length > S.minLen + 1 || !HANGUL.test(w)) continue;
+      if (w.length < S.minLen || w.length > Math.min(S.maxLen || 99, S.minLen + 1) || !HANGUL.test(w)) continue;
       const v = res.get(last(w));
       if (v && !(v.r === 'L' && v.d === 0)) break;
     }
@@ -152,7 +153,7 @@ const Game = (() => {
     init();
     for (const s of acceptableStarts(r)) {
       const h = window.HINT_MAP[s];
-      if (h && !used.has(h) && exists(h) && h.length >= S.minLen) return h;
+      if (h && !used.has(h) && exists(h) && h.length >= S.minLen && (!S.maxLen || h.length <= S.maxLen)) return h;
     }
     return candidates(r, used)[0] || null;
   }

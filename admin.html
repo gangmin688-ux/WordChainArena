@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>끄글 관리자 패널</title>
+<title>WordChainArena 관리자 패널</title>
 <link rel="stylesheet" href="style.css">
 <style>
   #app { max-width: 720px; }
@@ -25,7 +25,7 @@
 </head>
 <body>
 <div id="app">
-  <h1 class="logo">끄글 관리자</h1>
+  <h1 class="logo">WordChainArena 관리자</h1>
   <div class="subtitle">필승 단어 분석 · 사전 조회</div>
 
   <div class="tabs">
@@ -47,10 +47,11 @@
       <div style="height:12px"></div>
       <div class="row2">
         <div><label>두음법칙</label>
-          <select id="in-dueum"><option value="full">적용 – 끄글 방식(양방향)</option><option value="std">적용 – 표준(단방향)</option><option value="none">적용 안 함</option></select></div>
+          <select id="in-dueum"><option value="full">적용 – 기본 방식(양방향)</option><option value="std">적용 – 표준(단방향)</option><option value="none">적용 안 함</option></select></div>
         <div><label>최소 단어 길이</label>
           <select id="in-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select></div>
       </div>
+      <div class="row2"><div><label>최대 단어 길이 (비우면 제한 없음)</label><input type="number" id="in-maxlen" min="2" max="20"></div><div></div></div>
       <label>이미 사용된 단어 (쉼표/줄바꿈 구분, 선택)</label>
       <textarea id="in-used" placeholder="예: 놈팽이, 이리듐"></textarea>
       <div class="row2">
@@ -67,10 +68,11 @@
     <div class="card">
       <div class="row2">
         <div><label>두음법칙</label>
-          <select id="g-dueum"><option value="full">끄글 방식(양방향)</option><option value="std">표준(단방향)</option><option value="none">적용 안 함</option></select></div>
+          <select id="g-dueum"><option value="full">기본 방식(양방향)</option><option value="std">표준(단방향)</option><option value="none">적용 안 함</option></select></div>
         <div><label>최소 단어 길이</label>
           <select id="g-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select></div>
       </div>
+      <div class="row2"><div><label>최대 단어 길이 (비우면 제한 없음)</label><input type="number" id="g-maxlen" min="2" max="20"></div><div></div></div>
       <div class="row2">
         <div><label>한방 단어</label><select id="g-ban"><option value="allow">허용</option><option value="ban">금지</option></select></div>
         <div><label>컴퓨터 실력</label><select id="g-ai"><option value="smart">필승 단어 사용</option><option value="rand">무작위</option></select></div>
@@ -111,6 +113,8 @@
         <button class="btn primary" id="o-join">방 참가</button>
       </div>
       <div class="error-msg" id="o-err" style="margin-top:10px;"></div>
+      <label style="margin-top:14px;">🟢 참가자 모집 중인 방 (3초마다 갱신)</label>
+      <div id="o-rooms" class="small">불러오는 중...</div>
     </div>
     <div id="o-play" class="hidden">
       <div class="card" style="text-align:center;"><span class="small">방 코드</span>
@@ -181,8 +185,9 @@ document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click',
   $('tab-' + b.dataset.tab).classList.add('active');
 }));
 
+const maxOf = (a, b) => { const mn = parseInt($(a).value), mx = parseInt($(b).value) || 0; return mx && mx < mn ? mn : mx; };
 function applySettings() {
-  Game.setSettings({ dueum: $('in-dueum').value, minLen: parseInt($('in-minlen').value) });
+  Game.setSettings({ dueum: $('in-dueum').value, minLen: parseInt($('in-minlen').value), maxLen: maxOf('in-minlen', 'in-maxlen') });
 }
 const wait = fn => { $('out').innerHTML = '<div class="center-msg">분석 중...</div>'; setTimeout(fn, 30); };
 
@@ -236,7 +241,7 @@ function gGoodWords(syll) {   // syll 로 이을 때 필승인 단어들 (한방
   return G.ban ? l.filter(x => x.depth > 0) : l;
 }
 $('g-start').addEventListener('click', () => {
-  Game.setSettings({ dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), banHanbang: $('g-ban').value === 'ban' });
+  Game.setSettings({ dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), maxLen: maxOf('g-minlen', 'g-maxlen'), banHanbang: $('g-ban').value === 'ban' });
   G.ban = $('g-ban').value === 'ban';
   const st = Game.newStart();
   G.used = new Set(st.word ? [st.word] : []); G.syll = st.syll; G.over = false;
@@ -287,9 +292,31 @@ async function oEnter(room, code, name) {
   O.poll = setInterval(oPoll, 1200); O.tick = setInterval(oTick, 200);
   oRender();
 }
+async function oJoinCode(code) {
+  const name = $('o-name').value.trim() || '관리자'; $('o-err').textContent = '';
+  try { const room = await FB.joinRoom(code, name, O.id); await oEnter(room, code, name); }
+  catch (e) { $('o-err').textContent = e.message; }
+}
+async function oListRooms() {
+  if (O.code || !$('tab-online').classList.contains('active')) return;
+  try {
+    const rooms = await FB.listRooms();
+    FB.sweep(rooms).catch(() => {});
+    const arr = Object.values(rooms).filter(r => r && r.status === 'waiting' && Date.now() - (r.createdAt || 0) < 6 * 3600e3)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    $('o-rooms').innerHTML = arr.length ? arr.map(r => {
+      const ids = Object.keys(r.players || {}), host = (r.players[r.hostId] || {}).name || '?';
+      return `<div class="ans"><b>${esc(r.code)}</b><span>방장 ${esc(host)}</span><span class="tag">${ids.length}명 대기 중</span>
+        <button class="btn primary" data-code="${esc(r.code)}" style="width:auto; padding:6px 14px; font-size:14px;">바로 참가</button></div>`;
+    }).join('') : '현재 모집 중인 방이 없습니다.';
+    $('o-rooms').querySelectorAll('button[data-code]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); oJoinCode(b.dataset.code); }));
+  } catch (e) { $('o-rooms').textContent = '방 목록을 불러오지 못했습니다.'; }
+}
+setInterval(oListRooms, 3000);
+document.querySelector('[data-tab="online"]').addEventListener('click', () => setTimeout(oListRooms, 50));
 $('o-create').addEventListener('click', async () => {
   const name = $('o-name').value.trim() || '관리자'; $('o-err').textContent = '';
-  const s = { dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), banHanbang: $('g-ban').value === 'ban',
+  const s = { dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), maxLen: maxOf('g-minlen', 'g-maxlen'), banHanbang: $('g-ban').value === 'ban',
               turnSeconds: Math.max(5, Math.min(120, parseInt($('o-sec').value) || 20)), startMode: 'random', startSyll: '', assist: true };
   try { const room = await FB.createRoom(name, O.id, s); await oEnter(room, room.code, name); }
   catch (e) { $('o-err').textContent = e.message; }

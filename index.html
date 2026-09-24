@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>끄글 - 끝말잇기</title>
+<title>WordChainArena - 끝말잇기</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
 
   <!-- 메인 메뉴 -->
   <section id="screen-menu" class="screen active">
-    <h1 class="logo">끄 글</h1>
+    <h1 class="logo">WordChainArena</h1>
     <div class="subtitle">끝말잇기 대전</div>
 
     <div class="card" style="display:flex; flex-direction:column; gap:10px;">
@@ -112,6 +112,7 @@
     <div class="syllable-box">
       <div class="req">이 글자로 시작하는 단어를 입력하세요</div>
       <div class="letter" id="game-syllable">-</div>
+      <div class="lastword" id="game-lastword"></div>
     </div>
 
     <div class="timer-wrap"><div class="timer-bar" id="timer-bar"></div></div>
@@ -155,10 +156,12 @@
       <label>전체 기록</label>
       <div class="history" id="result-history" style="max-height:260px; flex-direction:column;"></div>
     </div>
+    <button class="btn accent2" id="replay-btn">🔄 다시 플레이</button>
+    <div class="center-msg" id="replay-note" style="padding:0;"></div>
     <button class="btn primary" data-go="menu">메인으로</button>
   </section>
 
-  <div class="footer-note">끄글 · 로컬 데이터 기반 단어 사전 · Firebase 실시간 대전</div>
+  <div class="footer-note">WordChainArena · 로컬 데이터 기반 단어 사전 · Firebase 실시간 대전</div>
 </div>
 
 <div id="site-overlay" class="hidden"><div><div style="font-size:48px;">🔒</div><div id="site-overlay-msg"></div></div></div>

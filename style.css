@@ -27,7 +27,7 @@ html, body {
 .screen { display: none; flex-direction: column; gap: 16px; flex: 1; }
 .screen.active { display: flex; }
 
-h1.logo { text-align: center; font-size: 34px; margin: 8px 0 0; letter-spacing: 2px;
+h1.logo { text-align: center; font-size: 30px; margin: 8px 0 0; letter-spacing: 0;
   background: linear-gradient(90deg, var(--accent), var(--accent2));
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .subtitle { text-align: center; color: var(--muted); margin-top: -8px; margin-bottom: 8px; font-size: 14px; }
@@ -110,3 +110,6 @@ select { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid
   display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px;
   font-size: 18px; line-height: 1.6; }
 #site-overlay.hidden { display: none; }
+
+.lastword { margin-top: 6px; font-size: 16px; color: var(--muted); }
+.lastword b { color: var(--accent2); font-size: 20px; }
