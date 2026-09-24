@@ -481,12 +481,7 @@ const SITE = { blocked: false, msg: '' };
 let MY_IP = null;
 async function refreshSiteConfig() {
   let siteOff = false, msg = '현재 접속이 제한되어 있습니다.';
-  try {
-    const cfg = await FB.getConfig();
-    siteOff = cfg.siteOpen === false; msg = cfg.message || msg;
-    Game.setGodMode(cfg.godMode === true);
-    document.getElementById('godmode-badge').classList.toggle('hidden', cfg.godMode !== true);
-  } catch (e) { return; }
+  try { const cfg = await FB.getConfig(); siteOff = cfg.siteOpen === false; msg = cfg.message || msg; } catch (e) { return; }
   if (!MY_IP) MY_IP = await FB.getIP();
   let ipBlocked = false;
   if (MY_IP) { try { ipBlocked = await FB.isBlocked(MY_IP); } catch (e) { /* 읽기 실패 시 통과 */ } }

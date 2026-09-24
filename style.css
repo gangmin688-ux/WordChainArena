@@ -93,11 +93,6 @@ input:focus { outline: 2px solid var(--accent); }
 
 .footer-note { text-align: center; font-size: 12px; color: #555b69; margin-top: auto; padding-top: 20px; }
 .hidden { display: none !important; }
-.godmode-badge {
-  text-align: center; font-size: 13px; font-weight: 700; color: #2a0b12;
-  background: linear-gradient(90deg, var(--accent2), var(--accent));
-  border-radius: 999px; padding: 6px 14px; margin: 8px auto 0; max-width: max-content;
-}
 .row-gap { display: flex; gap: 8px; align-items: center; }
 .small { font-size: 12px; color: var(--muted); }
 

@@ -192,10 +192,10 @@
         <button class="btn primary" id="god-on">🪄 갓모드 켜기 (ON)</button>
       </div>
       <div class="small" style="margin-top:12px;">
-        켜면 일반 사이트(로컬 대전·온라인 대전)와 관리자 화면 모두에서 <b>사전에 없는 단어도 그대로 통과</b>됩니다.
-        (이어야 하는 글자 규칙과 이미 사용한 단어 금지는 그대로 적용됩니다.) 일반 유저 화면에는 최대 5초 안에 반영됩니다.
+        관리자인 나에게만 적용됩니다. 켜면 <b>🎮 게임(vs 컴퓨터)</b>와 <b>🌐 온라인 대전</b> 탭에서 내가 내는 단어는
+        사전에 없어도 그대로 통과됩니다. (이어야 하는 글자 규칙과 이미 사용한 단어 금지는 그대로 적용됩니다.)
+        일반 유저 화면(index.html)이나 온라인 방의 다른 참가자에게는 영향을 주지 않으며, 이 브라우저에만 저장됩니다.
       </div>
-      <div class="error-msg" id="god-err" style="margin-top:10px;"></div>
     </div>
   </section>
 
@@ -459,24 +459,20 @@ $('l-off').addEventListener('click', () => lSet(false));
 $('l-on').addEventListener('click', () => lSet(true));
 lRefresh();
 
-// ===== 갓모드 =====
-async function godRefresh() {
-  try {
-    const c = await FB.getConfig(), on = c.godMode === true;
-    Game.setGodMode(on);
-    $('god-state').className = 'verdict ' + (on ? 'good' : 'bad');
-    $('god-state').innerHTML = on ? '현재 상태: <b>🪄 켜짐 (ON)</b> – 사전에 없는 단어도 허용됩니다.' : '현재 상태: <b>꺼짐 (OFF)</b>';
-  } catch (e) { $('god-state').textContent = '상태를 불러오지 못했습니다.'; }
+// ===== 갓모드 (관리자 브라우저에만 적용되는 로컬 설정) =====
+function godRefresh() {
+  const on = localStorage.getItem('wca_godmode') === '1';
+  Game.setGodMode(on);
+  $('god-state').className = 'verdict ' + (on ? 'good' : 'bad');
+  $('god-state').innerHTML = on ? '현재 상태: <b>🪄 켜짐 (ON)</b> – 이 관리자 화면에서 내가 내는 단어는 사전에 없어도 허용됩니다.' : '현재 상태: <b>꺼짐 (OFF)</b>';
 }
-async function godSet(on) {
-  $('god-err').textContent = '';
-  try { await FB.setConfig({ godMode: on }); await godRefresh(); }
-  catch (e) { $('god-err').textContent = e.message; }
+function godSet(on) {
+  localStorage.setItem('wca_godmode', on ? '1' : '0');
+  godRefresh();
 }
 $('god-off').addEventListener('click', () => godSet(false));
 $('god-on').addEventListener('click', () => godSet(true));
 godRefresh();
-setInterval(godRefresh, 3000); // 다른 탭(게임/온라인)에도 최신 갓모드 상태를 계속 반영
 
 // ===== 접속자 / IP 차단 =====
 let ADMIN_IP = null;
