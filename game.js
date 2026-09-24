@@ -5,6 +5,10 @@ const Game = (() => {
   let S = { ...DEFAULTS };
   let wordSet = null, allWords = null;
   const cache = {}; // `${dueum}|${minLen}` -> { ix, solved }
+  let godMode = false; // 관리자 패널에서 켜면 사전에 없는 단어도 허용 (다른 규칙은 그대로 적용)
+
+  function setGodMode(v) { godMode = !!v; }
+  function isGodMode() { return godMode; }
 
   const HANGUL = /^[가-힣]+$/;
   const first = w => w[0], last = w => w[w.length - 1];
@@ -71,8 +75,8 @@ const Game = (() => {
     if (used.has(word)) return { ok: false, reason: '이미 사용된 단어입니다.' };
     if (requiredSyll && !acceptableStarts(requiredSyll).includes(first(word)))
       return { ok: false, reason: `'${requiredSyll}'(으)로 시작하는 단어가 아닙니다.` };
-    if (!exists(word)) return { ok: false, reason: '사전에 없는 단어입니다.' };
-    if (S.banHanbang && !hasAnyContinuation(last(word), used, word))
+    if (!godMode && !exists(word)) return { ok: false, reason: '사전에 없는 단어입니다.' };
+    if (!godMode && S.banHanbang && !hasAnyContinuation(last(word), used, word))
       return { ok: false, reason: '한방 단어(상대가 이을 수 없는 단어)는 금지입니다.' };
     return { ok: true };
   }
@@ -161,5 +165,5 @@ const Game = (() => {
   const words = () => { init(); return allWords; };
   return { words, init, setSettings, getSettings, DEFAULTS, firstSyll: first, lastSyll: last, exists,
            validateMove, hasAnyContinuation, candidates, solve, winWords, newStart, hint,
-           equivClass: acceptableStarts };
+           equivClass: acceptableStarts, setGodMode, isGodMode };
 })();
