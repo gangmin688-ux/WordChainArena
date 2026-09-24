@@ -91,8 +91,9 @@ const FB = (() => {
     return (await res.json()) || {};
   }
   async function setConfig(cfg) {
+    // PATCH: 전달한 필드만 덮어쓰고 나머지(예: siteOpen ↔ godMode)는 그대로 유지
     const res = await fetch(`${BASE}/config.json`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
     });
     if (!res.ok) throw new Error('저장 실패 (Firebase 규칙에 /config 쓰기 권한이 필요합니다)');
     return res.json();
