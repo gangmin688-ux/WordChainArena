@@ -36,6 +36,7 @@
       <div id="local-name-fields"></div>
       <button class="btn ghost" id="local-name-refresh">인원 수 적용</button>
     </div>
+    <div class="card" id="local-settings"></div>
     <div class="btn-row">
       <button class="btn ghost" data-go="menu">뒤로</button>
       <button class="btn primary" id="local-start-btn">게임 시작</button>
@@ -48,6 +49,7 @@
     <div class="card">
       <label>닉네임</label>
       <input type="text" id="create-name" maxlength="10" placeholder="닉네임 입력">
+      <div id="create-settings"></div>
       <button class="btn primary" id="create-room-btn">방 만들기</button>
       <div class="error-msg" id="create-error"></div>
     </div>
@@ -106,9 +108,18 @@
       </div>
       <div class="error-msg" id="word-error"></div>
       <div class="btn-row">
-        <button class="btn ghost" id="hint-btn">💡 힌트</button>
+        <button class="btn ghost" id="finder-btn">🔍 단어 찾기</button>
         <button class="btn danger" id="giveup-btn">포기</button>
       </div>
+    </div>
+
+    <div class="card hidden" id="finder">
+      <div class="row-gap">
+        <input type="text" id="finder-q" placeholder="포함할 글자로 좁히기 (선택)" style="margin-bottom:0;">
+        <button class="btn ghost" id="finder-reroll" style="width:auto; padding:12px 14px;">🔄</button>
+      </div>
+      <div class="small" id="finder-count" style="margin:8px 0;"></div>
+      <div class="chips" id="finder-list"></div>
     </div>
 
     <div class="card">
@@ -134,6 +145,7 @@
   <div class="footer-note">끄글 · 로컬 데이터 기반 단어 사전 · Firebase 실시간 대전</div>
 </div>
 
+<div id="site-overlay" class="hidden"><div><div style="font-size:48px;">🔒</div><div id="site-overlay-msg"></div></div></div>
 <script src="words.js"></script>
 <script src="game.js"></script>
 <script src="firebase.js"></script>

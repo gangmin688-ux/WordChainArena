@@ -59,10 +59,13 @@ document.getElementById('local-start-btn').addEventListener('click', () => {
   LOCAL.players = names.map((name, i) => ({ id: 'L' + i, name, alive: true }));
   LOCAL.turnIndex = 0;
   LOCAL.usedWords = new Set();
-  const startWord = Game.randomStartWord();
-  LOCAL.usedWords.add(startWord);
-  LOCAL.currentSyllable = Game.lastSyll(startWord);
-  LOCAL.history = [{ who: '시작 단어', word: startWord }];
+  Game.setSettings(readSettings('ls'));
+  LOCAL.turnSeconds = Game.getSettings().turnSeconds;
+  const st = Game.newStart();
+  if (st.word) LOCAL.usedWords.add(st.word);
+  LOCAL.currentSyllable = st.syll;
+  LOCAL.history = [{ who: st.label, word: st.word || st.syll }];
+  applyAssistUI();
   CURRENT_MODE = 'local';
   document.getElementById('word-input').disabled = false;
   document.getElementById('submit-word-btn').disabled = false;
@@ -163,7 +166,7 @@ document.getElementById('create-room-btn').addEventListener('click', async () =>
   errEl.textContent = '';
   if (!name) { errEl.textContent = '닉네임을 입력하세요.'; return; }
   try {
-    const room = await FB.createRoom(name, ONLINE.myId);
+    const room = await FB.createRoom(name, ONLINE.myId, readSettings('cs'));
     ONLINE.code = room.code;
     ONLINE.myName = name;
     ONLINE.room = room;
@@ -208,6 +211,7 @@ async function pollOnlineRoom() {
     const room = await FB.getRoom(ONLINE.code);
     if (!room) return;
     ONLINE.room = room;
+    if (room.settings) { Game.setSettings(room.settings); applyAssistUI(); }
     if (room.status === 'waiting') {
       renderLobby(room);
     } else if (room.status === 'playing') {
@@ -367,14 +371,6 @@ function activeMode() {
   return CURRENT_MODE || 'local';
 }
 
-document.getElementById('hint-btn').addEventListener('click', () => {
-  let syll, used;
-  if (activeMode() === 'local') { syll = LOCAL.currentSyllable; used = LOCAL.usedWords; }
-  else { syll = ONLINE.room.currentSyllable; used = new Set(ONLINE.room.usedWords || []); }
-  const h = Game.hint(syll, used);
-  showWordError(h ? `힌트: ${h}` : '더 이상 이어갈 단어가 없습니다!');
-});
-
 document.getElementById('giveup-btn').addEventListener('click', () => {
   if (activeMode() === 'local') {
     clearInterval(LOCAL.timerHandle);
@@ -400,3 +396,98 @@ function endGame(winnerName, history) {
   });
   goScreen('result');
 }
+
+// ============================================================
+// 게임 설정 UI / 단어 찾기
+// ============================================================
+function currentCtx() {
+  if (activeMode() === 'local') return { syll: LOCAL.currentSyllable, used: LOCAL.usedWords };
+  const r = ONLINE.room || {};
+  return { syll: r.currentSyllable, used: new Set(r.usedWords || []) };
+}
+
+function settingsHTML(p, defSec) {
+  return `<div class="set-title">⚙️ 게임 설정</div>
+  <label>두음법칙</label>
+  <select id="${p}-dueum">
+    <option value="full">적용 – 끄글 방식 (양방향: 나↔라, 여↔려↔녀)</option>
+    <option value="std">적용 – 표준 (라→나, 려·녀→여 한 방향만)</option>
+    <option value="none">적용 안 함 (글자 그대로)</option>
+  </select>
+  <label>제한 시간 (초)</label>
+  <input type="number" id="${p}-sec" min="5" max="120" value="${defSec}">
+  <label>최소 단어 길이</label>
+  <select id="${p}-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select>
+  <label>한방 단어 (상대가 이을 수 없는 단어)</label>
+  <select id="${p}-hanbang"><option value="allow">허용</option><option value="ban">금지</option></select>
+  <label>시작 방식</label>
+  <select id="${p}-start"><option value="random">랜덤 시작 단어</option><option value="syll">시작 글자 직접 지정</option></select>
+  <input type="text" id="${p}-syll" maxlength="1" placeholder="시작 글자 1자 (예: 가)" style="display:none;">`;
+}
+
+function readSettings(p) {
+  const v = id => document.getElementById(p + '-' + id);
+  return {
+    dueum: v('dueum').value,
+    turnSeconds: Math.max(5, Math.min(120, parseInt(v('sec').value) || 30)),
+    minLen: parseInt(v('minlen').value),
+    banHanbang: v('hanbang').value === 'ban',
+    startMode: v('start').value,
+    startSyll: (v('syll').value || '').trim(),
+    assist: true
+  };
+}
+
+[['ls', 'local-settings', 30], ['cs', 'create-settings', 20]].forEach(([p, host, sec]) => {
+  document.getElementById(host).innerHTML = settingsHTML(p, sec);
+  const st = document.getElementById(p + '-start'), sy = document.getElementById(p + '-syll');
+  st.addEventListener('change', () => { sy.style.display = st.value === 'syll' ? 'block' : 'none'; });
+});
+
+function applyAssistUI() {
+  const on = Game.getSettings().assist;
+  document.getElementById('finder-btn').style.display = on ? '' : 'none';
+  if (!on) document.getElementById('finder').classList.add('hidden');
+}
+
+function renderFinder() {
+  const { syll, used } = currentCtx();
+  if (!syll) return;
+  const q = document.getElementById('finder-q').value.trim();
+  let list = Game.candidates(syll, used);
+  if (q) list = list.filter(w => w.includes(q));
+  document.getElementById('finder-count').textContent =
+    `'${syll}'(으)로 이을 수 있는 단어 ${list.length.toLocaleString()}개 중 무작위 30개 (눌러서 입력칸에 넣기)`;
+  const box = document.getElementById('finder-list');
+  box.innerHTML = '';
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  list.slice(0, 30).forEach(w => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = w;
+    b.addEventListener('click', () => { document.getElementById('word-input').value = w; });
+    box.appendChild(b);
+  });
+}
+document.getElementById('finder-btn').addEventListener('click', () => {
+  document.getElementById('finder').classList.toggle('hidden');
+  renderFinder();
+});
+document.getElementById('finder-reroll').addEventListener('click', renderFinder);
+document.getElementById('finder-q').addEventListener('input', renderFinder);
+
+// ============================================================
+// 관리자 접근 제어 (Firebase /config)
+// ============================================================
+const SITE = { blocked: false, msg: '' };
+async function refreshSiteConfig() {
+  try {
+    const cfg = await FB.getConfig();
+    SITE.blocked = cfg.siteOpen === false;
+    SITE.msg = cfg.message || '현재 접속이 제한되어 있습니다.';
+  } catch (e) { return; }   // 읽기 실패 시 기존 상태 유지
+  document.getElementById('site-overlay-msg').textContent = SITE.msg;
+  document.getElementById('site-overlay').classList.toggle('hidden', !SITE.blocked);
+  if (SITE.blocked) { stopAllLoops(); goScreen('menu'); }   // 진행 중인 게임/방 포함 전부 중단
+}
+refreshSiteConfig();
+setInterval(refreshSiteConfig, 5000);

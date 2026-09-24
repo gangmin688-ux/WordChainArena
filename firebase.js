@@ -32,11 +32,24 @@ const FB = (() => {
     await fetch(`${BASE}/rooms/${code}.json`, { method: 'DELETE' });
   }
 
+  async function getConfig() {
+    const res = await fetch(`${BASE}/config.json`);
+    if (!res.ok) throw new Error('config 읽기 실패');
+    return (await res.json()) || {};
+  }
+  async function setConfig(cfg) {
+    const res = await fetch(`${BASE}/config.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
+    });
+    if (!res.ok) throw new Error('저장 실패 (Firebase 규칙에 /config 쓰기 권한이 필요합니다)');
+    return res.json();
+  }
+
   function genCode() {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 
-  async function createRoom(hostName, hostId) {
+  async function createRoom(hostName, hostId, settings) {
     for (let i = 0; i < 10; i++) {
       const code = genCode();
       const existing = await getRoom(code);
@@ -46,7 +59,8 @@ const FB = (() => {
         createdAt: Date.now(),
         hostId,
         status: 'waiting',
-        turnSeconds: 20,
+        turnSeconds: (settings && settings.turnSeconds) || 20,
+        settings: settings || null,
         players: {
           [hostId]: { name: hostName, alive: true, joinedAt: Date.now() }
         },
@@ -78,12 +92,13 @@ const FB = (() => {
 
   async function startGame(code, room) {
     Game.init();
-    const startWord = Game.randomStartWord();
+    if (room.settings) Game.setSettings(room.settings);
+    const st = Game.newStart();
     await patchRoom(code, {
       status: 'playing',
-      currentSyllable: Game.lastSyll(startWord),
-      usedWords: [startWord],
-      history: [{ playerId: 'system', name: '시작 단어', word: startWord, ts: Date.now() }],
+      currentSyllable: st.syll,
+      usedWords: st.word ? [st.word] : [],
+      history: [{ playerId: 'system', name: st.label, word: st.word || st.syll, ts: Date.now() }],
       turnStartedAt: Date.now(),
       turnIndex: 0
     });
@@ -141,7 +156,7 @@ const FB = (() => {
   }
 
   return {
-    getRoom, putRoom, patchRoom, deleteRoom,
+    getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig,
     createRoom, joinRoom, startGame, submitWord,
     eliminateCurrentPlayer, nextAliveIndex, uid
   };

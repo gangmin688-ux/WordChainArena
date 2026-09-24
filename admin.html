@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>끄글 관리자 패널</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #app { max-width: 720px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; } .tabs .btn { min-width: 140px; }
+  .tabs .btn { flex: 1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  textarea { width: 100%; min-height: 60px; padding: 10px 12px; border-radius: 10px; border: 1px solid #333846;
+    background: #11131a; color: var(--text); font-size: 14px; margin-bottom: 12px; font-family: inherit; }
+  .verdict { padding: 12px 14px; border-radius: 12px; font-size: 15px; margin-bottom: 12px; background: var(--panel2); }
+  .verdict.good { outline: 2px solid var(--good); } .verdict.bad { outline: 2px solid var(--bad); }
+  .ans { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: #171a22; margin-bottom: 6px; cursor: pointer; }
+  .ans b { font-size: 18px; } .ans .tag { margin-left: auto; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--accent2); color: #2a0b12; font-weight: 700; }
+  .badge.d0 { background: var(--good); color: #05230f; }
+  .list-scroll { max-height: 55vh; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 6px 8px; border-bottom: 1px solid #2a2e3a; text-align: left; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1 class="logo">끄글 관리자</h1>
+  <div class="subtitle">필승 단어 분석 · 사전 조회</div>
+
+  <div class="tabs">
+    <button class="btn primary" data-tab="win">🏆 필승 단어 찾기</button>
+    <button class="btn ghost" data-tab="game">🎮 게임 (vs 컴퓨터)</button>
+    <button class="btn ghost" data-tab="online">🌐 온라인 대전</button>
+    <button class="btn ghost" data-tab="lock">🔒 접근 제어</button>
+    <button class="btn ghost" data-tab="dead">☠️ 한방 글자 목록</button>
+  </div>
+
+  <!-- 필승 단어 찾기 -->
+  <section id="tab-win" class="screen active" style="margin-top:16px;">
+    <div class="card">
+      <label>상대가 낸 단어 (또는 글자 1개)</label>
+      <div class="row-gap">
+        <input type="text" id="in-word" placeholder="예: 놈팽이" style="margin-bottom:0;">
+        <button class="btn primary" id="go-btn" style="width:auto; padding:12px 20px;">찾기</button>
+      </div>
+      <div style="height:12px"></div>
+      <div class="row2">
+        <div><label>두음법칙</label>
+          <select id="in-dueum"><option value="full">적용 – 끄글 방식(양방향)</option><option value="std">적용 – 표준(단방향)</option><option value="none">적용 안 함</option></select></div>
+        <div><label>최소 단어 길이</label>
+          <select id="in-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select></div>
+      </div>
+      <label>이미 사용된 단어 (쉼표/줄바꿈 구분, 선택)</label>
+      <textarea id="in-used" placeholder="예: 놈팽이, 이리듐"></textarea>
+      <div class="row2">
+        <div><label>결과에 포함할 글자로 거르기 (선택)</label><input type="text" id="in-filter" placeholder="예: 듐"></div>
+        <div><label>결과 종류</label>
+          <select id="in-mode"><option value="all">필승 전부 (한방 + 심층)</option><option value="d0">즉시 한방만</option></select></div>
+      </div>
+    </div>
+    <div id="out"></div>
+  </section>
+
+  <!-- 게임 -->
+  <section id="tab-game" class="screen" style="margin-top:16px;">
+    <div class="card">
+      <div class="row2">
+        <div><label>두음법칙</label>
+          <select id="g-dueum"><option value="full">끄글 방식(양방향)</option><option value="std">표준(단방향)</option><option value="none">적용 안 함</option></select></div>
+        <div><label>최소 단어 길이</label>
+          <select id="g-minlen"><option value="2">2글자 이상</option><option value="3">3글자 이상</option><option value="4">4글자 이상</option></select></div>
+      </div>
+      <div class="row2">
+        <div><label>한방 단어</label><select id="g-ban"><option value="allow">허용</option><option value="ban">금지</option></select></div>
+        <div><label>컴퓨터 실력</label><select id="g-ai"><option value="smart">필승 단어 사용</option><option value="rand">무작위</option></select></div>
+      </div>
+      <button class="btn primary" id="g-start">새 게임 시작</button>
+    </div>
+    <div id="g-board" class="hidden">
+      <div class="syllable-box"><div class="req">이 글자로 시작하는 단어를 입력하세요</div><div class="letter" id="g-syll">-</div></div>
+      <div class="card" style="margin-top:12px;">
+        <div class="row-gap">
+          <input type="text" id="g-in" placeholder="단어 입력" style="margin-bottom:0;">
+          <button class="btn primary" id="g-send" style="width:auto; padding:12px 18px;">입력</button>
+        </div>
+        <div class="error-msg" id="g-msg" style="margin-top:8px;"></div>
+        <div class="btn-row">
+          <button class="btn ghost" id="g-hint">💡 힌트 (필승 단어)</button>
+          <button class="btn danger" id="g-giveup">포기</button>
+        </div>
+        <div class="chips" id="g-hints" style="margin-top:10px;"></div>
+      </div>
+      <div class="card" style="margin-top:12px;"><label>기록</label><div class="history" id="g-hist"></div></div>
+    </div>
+  </section>
+
+  <!-- 온라인 대전 -->
+  <section id="tab-online" class="screen" style="margin-top:16px;">
+    <div class="card" id="o-setup">
+      <div class="row2">
+        <div><label>닉네임</label><input type="text" id="o-name" maxlength="10" value="관리자"></div>
+        <div><label>방 코드 (참가할 때만)</label><input type="text" id="o-code" maxlength="4" placeholder="예: 1234"></div>
+      </div>
+      <div class="row2">
+        <div><label>제한 시간 (초, 방 만들 때)</label><input type="number" id="o-sec" min="5" max="120" value="20"></div>
+        <div><label>방 설정</label><div class="small" style="padding:10px 0;">두음법칙·최소 길이·한방 단어는 <b>🎮 게임 탭</b>의 값으로 만들어집니다.</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn accent2" id="o-create">방 만들기</button>
+        <button class="btn primary" id="o-join">방 참가</button>
+      </div>
+      <div class="error-msg" id="o-err" style="margin-top:10px;"></div>
+    </div>
+    <div id="o-play" class="hidden">
+      <div class="card" style="text-align:center;"><span class="small">방 코드</span>
+        <div class="room-code" id="o-roomcode">----</div></div>
+      <div class="card"><ul class="player-list" id="o-players"></ul></div>
+      <button class="btn primary" id="o-start" style="display:none;">게임 시작</button>
+      <div class="syllable-box"><div class="letter" id="o-syll">-</div></div>
+      <div class="timer-wrap"><div class="timer-bar" id="o-bar"></div></div>
+      <div class="turn-status" id="o-status">대기 중...</div>
+      <div class="card">
+        <div class="row-gap">
+          <input type="text" id="o-in" placeholder="단어 입력" style="margin-bottom:0;" disabled>
+          <button class="btn primary" id="o-send" style="width:auto; padding:12px 18px;" disabled>입력</button>
+        </div>
+        <div class="error-msg" id="o-msg" style="margin-top:8px;"></div>
+        <div class="btn-row">
+          <button class="btn ghost" id="o-hint">💡 힌트 (필승 단어)</button>
+          <button class="btn danger" id="o-giveup">포기</button>
+        </div>
+        <div class="chips" id="o-hints" style="margin-top:10px;"></div>
+      </div>
+      <div class="card"><label>기록</label><div class="history" id="o-hist"></div></div>
+      <button class="btn ghost" id="o-leave">나가기</button>
+    </div>
+  </section>
+
+  <!-- 접근 제어 -->
+  <section id="tab-lock" class="screen" style="margin-top:16px;">
+    <div class="card">
+      <div class="verdict" id="l-state">상태 불러오는 중...</div>
+      <label>차단 시 일반 유저에게 보여줄 안내 문구</label>
+      <input type="text" id="l-msg" maxlength="80" value="점검 중입니다. 잠시 후 다시 접속해주세요.">
+      <div class="btn-row">
+        <button class="btn danger" id="l-off">🔒 일반 접근 차단 (OFF)</button>
+        <button class="btn primary" id="l-on">🔓 접근 허용 (ON)</button>
+      </div>
+      <div class="small" style="margin-top:12px;">
+        차단하면 일반 사이트가 <b>전체 잠금</b>되어 로컬 대전·방 만들기·방 참가 등 아무 기능도 쓸 수 없고, 진행 중인 게임도 중단됩니다.
+        관리자 패널은 영향받지 않습니다. 일반 유저 화면에는 최대 5초 안에 반영됩니다.
+      </div>
+      <div class="error-msg" id="l-err" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <!-- 한방 글자 목록 -->
+  <section id="tab-dead" class="screen" style="margin-top:16px;">
+    <div class="card">
+      <div class="small" style="margin-bottom:10px;">현재 설정(위 탭의 두음법칙/최소 길이)에서 <b>이 글자로 끝나면 상대가 이을 단어가 없는</b> 글자입니다.</div>
+      <button class="btn ghost" id="dead-btn">목록 불러오기</button>
+      <div id="dead-out" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <div class="footer-note">분석은 사전 전체(약 26만 단어)를 기준으로 하며, 깊은 수 분석은 이미 사용된 단어를 무시한 근사입니다.</div>
+</div>
+
+<script src="words.js"></script>
+<script src="game.js"></script>
+<script src="firebase.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach(x => x.classList.replace('primary', 'ghost'));
+  b.classList.replace('ghost', 'primary');
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $('tab-' + b.dataset.tab).classList.add('active');
+}));
+
+function applySettings() {
+  Game.setSettings({ dueum: $('in-dueum').value, minLen: parseInt($('in-minlen').value) });
+}
+const wait = fn => { $('out').innerHTML = '<div class="center-msg">분석 중...</div>'; setTimeout(fn, 30); };
+
+function run() {
+  const word = $('in-word').value.trim();
+  if (!/^[가-힣]+$/.test(word)) { $('out').innerHTML = '<div class="verdict bad">한글 단어(또는 글자 1개)를 입력하세요.</div>'; return; }
+  wait(() => {
+    applySettings();
+    const used = new Set($('in-used').value.split(/[,\n]/).map(s => s.trim()).filter(Boolean));
+    const syll = Game.lastSyll(word);
+    const starts = Game.equivClass(syll);
+    let list = Game.winWords(word, used);
+    const d0 = list.filter(x => x.depth === 0).length;
+    if ($('in-mode').value === 'd0') list = list.filter(x => x.depth === 0);
+    const f = $('in-filter').value.trim();
+    if (f) list = list.filter(x => x.word.includes(f));
+
+    const inDict = word.length === 1 || Game.exists(word);
+    const warn = inDict ? '' : ' <span class="small">(사전에 없는 단어입니다)</span>';
+    let html = `<div class="verdict ${d0 || list.length ? 'good' : 'bad'}"><b>${esc(word)}</b>${warn} → 이어야 하는 글자: <b>${starts.map(esc).join(' / ')}</b><br>` +
+      (list.length
+        ? `필승 단어 <b>${list.length.toLocaleString()}</b>개 (즉시 한방 ${d0.toLocaleString()}개)`
+        : `필승 단어가 없습니다. 이 단어를 받은 쪽이 불리하지 않거나(무한 반복 가능), 사전상 필승 경로가 없습니다.`) + `</div>`;
+
+    html += '<div class="list-scroll">' + list.slice(0, 200).map(x => {
+      const l = Game.lastSyll(x.word);
+      const n = Game.candidates(l, new Set([...used, word, x.word])).length;
+      const tag = x.depth === 0
+        ? `<span class="badge d0">즉시 한방</span>`
+        : `<span class="badge">${x.depth + 1}수 필승</span>`;
+      return `<div class="ans" data-w="${esc(x.word)}"><b>${esc(x.word)}</b>${tag}<span class="tag">'${esc(l)}'로 이을 수 있는 단어 ${n}개</span></div>`;
+    }).join('') + (list.length > 200 ? `<div class="small" style="text-align:center;padding:8px;">상위 200개만 표시 (거르기로 좁혀보세요)</div>` : '') + '</div>';
+    $('out').innerHTML = html;
+    $('out').querySelectorAll('.ans').forEach(el => el.addEventListener('click', () => {
+      navigator.clipboard && navigator.clipboard.writeText(el.dataset.w);
+      $('in-word').value = el.dataset.w;   // 눌러서 이어서 분석 가능
+    }));
+  });
+}
+// ===== 관리자 게임 (vs 컴퓨터) =====
+const G = { used: new Set(), syll: null, hist: [], over: false, ban: false };
+function gRender() {
+  $('g-board').classList.remove('hidden');
+  $('g-syll').textContent = G.syll;
+  $('g-hist').innerHTML = G.hist.map(([who, w]) => `<div class="entry"><span>${esc(w)}</span><span class="who">${who}</span></div>`).join('');
+  $('g-in').disabled = $('g-send').disabled = G.over;
+}
+function gEnd(msg) { G.over = true; G.hist.push(['결과', msg]); $('g-msg').textContent = msg; gRender(); }
+function gGoodWords(syll) {   // syll 로 이을 때 필승인 단어들 (한방 금지 규칙 반영)
+  let l = Game.winWords(syll, G.used);
+  return G.ban ? l.filter(x => x.depth > 0) : l;
+}
+$('g-start').addEventListener('click', () => {
+  Game.setSettings({ dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), banHanbang: $('g-ban').value === 'ban' });
+  G.ban = $('g-ban').value === 'ban';
+  const st = Game.newStart();
+  G.used = new Set(st.word ? [st.word] : []); G.syll = st.syll; G.over = false;
+  G.hist = [[st.label, st.word || st.syll]]; $('g-msg').textContent = ''; $('g-hints').innerHTML = ''; gRender();
+});
+function gSend() {
+  if (G.over) return;
+  const w = $('g-in').value.trim(), v = Game.validateMove(w, G.syll, G.used);
+  if (!v.ok) { $('g-msg').textContent = v.reason; return; }
+  $('g-msg').textContent = ''; $('g-hints').innerHTML = ''; $('g-in').value = '';
+  G.used.add(w); G.hist.push(['나', w]);
+  const cands = Game.candidates(Game.lastSyll(w), G.used).filter(c => !G.ban || Game.hasAnyContinuation(Game.lastSyll(c), G.used, c));
+  if (!cands.length) return gEnd('🏆 컴퓨터가 이을 단어가 없습니다. 내 승리!');
+  let pick;
+  if ($('g-ai').value === 'smart') { const g = gGoodWords(w); if (g.length) pick = g[0].word; }
+  pick = pick || cands[Math.floor(Math.random() * cands.length)];
+  G.used.add(pick); G.hist.push(['컴퓨터', pick]); G.syll = Game.lastSyll(pick);
+  if (!Game.hasAnyContinuation(G.syll, G.used)) return gEnd('💀 이을 단어가 없습니다. 컴퓨터 승리!');
+  gRender();
+}
+$('g-send').addEventListener('click', gSend);
+$('g-in').addEventListener('keydown', e => { if (e.key === 'Enter') gSend(); });
+$('g-giveup').addEventListener('click', () => { if (!G.over) gEnd('포기했습니다. 컴퓨터 승리!'); });
+$('g-hint').addEventListener('click', () => {
+  if (G.over) return;
+  let g = gGoodWords(G.syll), label = '필승';
+  let words = g.slice(0, 8).map(x => x.word);
+  if (!words.length) {
+    label = '일반';
+    words = Game.candidates(G.syll, G.used).filter(c => !G.ban || Game.hasAnyContinuation(Game.lastSyll(c), G.used, c)).slice(0, 8);
+  }
+  $('g-hints').innerHTML = `<span class="small" style="width:100%">${label} 힌트 (눌러서 입력)</span>` +
+    words.map(w => `<button class="chip">${esc(w)}</button>`).join('');
+  $('g-hints').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { $('g-in').value = b.textContent; }));
+});
+
+// ===== 관리자 온라인 대전 =====
+const O = { id: 'adm_' + Math.random().toString(36).slice(2, 8), name: '', code: null, room: null, poll: null, tick: null, elim: false };
+const oUsed = () => new Set((O.room && O.room.usedWords) || []);
+const oMine = () => O.room && O.room.status === 'playing' && (O.room.order || [])[O.room.turnIndex] === O.id;
+
+async function oEnter(room, code, name) {
+  O.room = room; O.code = code; O.name = name; O.elim = false;
+  if (room.settings) Game.setSettings(room.settings);
+  $('o-setup').classList.add('hidden'); $('o-play').classList.remove('hidden');
+  $('o-roomcode').textContent = code;
+  clearInterval(O.poll); clearInterval(O.tick);
+  O.poll = setInterval(oPoll, 1200); O.tick = setInterval(oTick, 200);
+  oRender();
+}
+$('o-create').addEventListener('click', async () => {
+  const name = $('o-name').value.trim() || '관리자'; $('o-err').textContent = '';
+  const s = { dueum: $('g-dueum').value, minLen: parseInt($('g-minlen').value), banHanbang: $('g-ban').value === 'ban',
+              turnSeconds: Math.max(5, Math.min(120, parseInt($('o-sec').value) || 20)), startMode: 'random', startSyll: '', assist: true };
+  try { const room = await FB.createRoom(name, O.id, s); await oEnter(room, room.code, name); }
+  catch (e) { $('o-err').textContent = e.message; }
+});
+$('o-join').addEventListener('click', async () => {
+  const name = $('o-name').value.trim() || '관리자', code = $('o-code').value.trim(); $('o-err').textContent = '';
+  if (!code) { $('o-err').textContent = '방 코드를 입력하세요.'; return; }
+  try { const room = await FB.joinRoom(code, name, O.id); await oEnter(room, code, name); }
+  catch (e) { $('o-err').textContent = e.message; }
+});
+async function oPoll() {
+  try {
+    const room = await FB.getRoom(O.code);
+    if (!room) return;
+    O.room = room;
+    if (room.settings) Game.setSettings(room.settings);
+    oRender();
+    if (room.status === 'finished') { clearInterval(O.poll); clearInterval(O.tick); }
+  } catch (e) { console.error(e); }
+}
+function oRender() {
+  const r = O.room; if (!r) return;
+  const order = r.order || [];
+  $('o-players').innerHTML = order.map((pid, i) => {
+    const p = r.players[pid] || {}, cls = (r.status === 'playing' && i === r.turnIndex && p.alive ? 'turn ' : '') + (p.alive ? '' : 'dead');
+    return `<li class="${cls}">${esc(p.name || '?')}${pid === r.hostId ? ' (방장)' : ''}${pid === O.id ? ' (나)' : ''}</li>`;
+  }).join('');
+  $('o-start').style.display = r.status === 'waiting' && r.hostId === O.id ? 'block' : 'none';
+  $('o-syll').textContent = r.currentSyllable || '-';
+  $('o-hist').innerHTML = (r.history || []).map(h => `<div class="entry"><span>${esc(h.word)}</span><span class="who">${esc(h.name)}</span></div>`).join('');
+  if (r.status === 'finished') {
+    const w = r.winnerId && r.players[r.winnerId] ? r.players[r.winnerId].name : '무승부';
+    $('o-status').textContent = `게임 종료 – 🏆 ${w}`; $('o-in').disabled = $('o-send').disabled = true;
+  } else if (r.status === 'waiting') $('o-status').textContent = '대기 중... (방장이 시작하면 진행됩니다)';
+}
+function oTick() {
+  const r = O.room; if (!r || r.status !== 'playing') return;
+  const total = (r.turnSeconds || 20) * 1000, rem = Math.max(0, total - (Date.now() - (r.turnStartedAt || Date.now())));
+  $('o-bar').style.width = (rem / total * 100) + '%'; $('o-bar').classList.toggle('warn', rem / total < .3);
+  const cur = r.players[(r.order || [])[r.turnIndex]] || {}, mine = oMine();
+  $('o-status').textContent = mine ? `내 차례! (${Math.ceil(rem / 1000)}초)` : `${cur.name || '?'}님 차례 (${Math.ceil(rem / 1000)}초)`;
+  $('o-status').classList.toggle('mine', mine);
+  $('o-in').disabled = $('o-send').disabled = !mine;
+  if (rem <= 0 && !O.elim) { O.elim = true; FB.eliminateCurrentPlayer(O.code, r).finally(() => setTimeout(() => O.elim = false, 1500)); }
+}
+$('o-start').addEventListener('click', async () => {
+  if (Object.keys(O.room.players).length < 2) { $('o-msg').textContent = '최소 2명이 필요합니다.'; return; }
+  await FB.startGame(O.code, O.room);
+});
+async function oSend() {
+  const w = $('o-in').value.trim();
+  if (!oMine()) { $('o-msg').textContent = '내 차례가 아닙니다.'; return; }
+  const v = Game.validateMove(w, O.room.currentSyllable, oUsed());
+  if (!v.ok) { $('o-msg').textContent = v.reason; return; }
+  $('o-msg').textContent = ''; $('o-hints').innerHTML = ''; $('o-in').value = '';
+  await FB.submitWord(O.code, O.room, O.id, O.name, w);
+}
+$('o-send').addEventListener('click', oSend);
+$('o-in').addEventListener('keydown', e => { if (e.key === 'Enter') oSend(); });
+$('o-giveup').addEventListener('click', () => { if (oMine()) FB.eliminateCurrentPlayer(O.code, O.room); else $('o-msg').textContent = '내 차례가 아닙니다.'; });
+$('o-hint').addEventListener('click', () => {
+  const r = O.room; if (!r || !r.currentSyllable) return;
+  const ban = Game.getSettings().banHanbang, used = oUsed(), ok = c => !ban || Game.hasAnyContinuation(Game.lastSyll(c), used, c);
+  let words = Game.winWords(r.currentSyllable, used).filter(x => !ban || x.depth > 0).slice(0, 8).map(x => x.word), label = '필승';
+  if (!words.length) { label = '일반'; words = Game.candidates(r.currentSyllable, used).filter(ok).slice(0, 8); }
+  $('o-hints').innerHTML = `<span class="small" style="width:100%">${label} 힌트 (눌러서 입력)</span>` + words.map(w => `<button class="chip">${esc(w)}</button>`).join('');
+  $('o-hints').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { $('o-in').value = b.textContent; }));
+});
+$('o-leave').addEventListener('click', () => {
+  clearInterval(O.poll); clearInterval(O.tick); O.room = null; O.code = null;
+  $('o-play').classList.add('hidden'); $('o-setup').classList.remove('hidden');
+});
+
+// ===== 접근 제어 =====
+async function lRefresh() {
+  try {
+    const c = await FB.getConfig(), off = c.siteOpen === false;
+    $('l-state').className = 'verdict ' + (off ? 'bad' : 'good');
+    $('l-state').innerHTML = off ? '현재 상태: <b>🔒 차단 중 (OFF)</b>' : '현재 상태: <b>🔓 허용 중 (ON)</b>';
+    if (c.message) $('l-msg').value = c.message;
+  } catch (e) { $('l-state').textContent = '상태를 불러오지 못했습니다.'; }
+}
+async function lSet(open) {
+  $('l-err').textContent = '';
+  try { await FB.setConfig({ siteOpen: open, message: $('l-msg').value.trim(), updatedAt: Date.now() }); await lRefresh(); }
+  catch (e) { $('l-err').textContent = e.message; }
+}
+$('l-off').addEventListener('click', () => lSet(false));
+$('l-on').addEventListener('click', () => lSet(true));
+lRefresh();
+
+$('go-btn').addEventListener('click', run);
+$('in-word').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+
+$('dead-btn').addEventListener('click', () => {
+  $('dead-out').innerHTML = '<div class="center-msg">분석 중...</div>';
+  setTimeout(() => {
+    applySettings();
+    const res = Game.solve(), rows = [];
+    res.forEach((v, s) => { if (v.r === 'L' && v.d === 0) rows.push(s); });
+    rows.sort();
+    $('dead-out').innerHTML = `<div class="small" style="margin-bottom:8px;">총 ${rows.length.toLocaleString()}개</div><div class="chips">` +
+      rows.map(s => `<span class="chip">${esc(s)}</span>`).join('') + '</div>';
+  }, 30);
+});
+</script>
+</body>
+</html>
