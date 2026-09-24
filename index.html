@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>끝말잇기 1v1</title>
+<style>
+:root{--bg:#090b10;--panel:#11151d;--panel2:#171c26;--line:#293140;--text:#f3f6fb;--muted:#9ca8ba;--accent:#7c5cff;--accent2:#9a82ff;--danger:#ff5577;--ok:#45d483}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -10%,#25203e 0,#090b10 42%);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;min-height:100vh}
+.wrap{width:min(1050px,94vw);margin:auto;padding:28px 0 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
+h1{margin:0;font-size:28px}.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.badge{border:1px solid var(--line);background:#10141c;border-radius:999px;padding:8px 12px;color:#cbd3df;font-size:12px}
+.grid{display:grid;grid-template-columns:300px 1fr;gap:16px}.panel{background:rgba(17,21,29,.9);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 12px 40px #0005}
+h2{font-size:15px;margin:0 0 14px}.row{display:flex;gap:8px}.stack>*+*{margin-top:9px}
+button,input{font:inherit}button{border:0;border-radius:11px;padding:11px 13px;background:var(--panel2);color:var(--text);cursor:pointer;border:1px solid var(--line);transition:.15s}
+button:hover{transform:translateY(-1px);border-color:#465166}button.primary{background:var(--accent);border-color:transparent;font-weight:700}button.danger{color:#ff9ab0}
+input{width:100%;padding:12px 13px;border-radius:11px;border:1px solid var(--line);background:#0c1016;color:var(--text);outline:none}input:focus{border-color:var(--accent)}
+.room{font-size:27px;font-weight:800;letter-spacing:5px;text-align:center;padding:12px;background:#0c1016;border-radius:12px;margin:8px 0}
+.status{padding:11px;border-radius:11px;background:#0d1219;color:#b8c2d0;font-size:13px;line-height:1.5}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 0;color:#c7d0dd;font-size:13px}.toggle input{width:auto}
+.game{min-height:570px;display:flex;flex-direction:column}.score{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.player{padding:12px;border-radius:13px;background:#0c1016;border:1px solid var(--line)}.player.active{border-color:var(--accent);box-shadow:0 0 0 1px #7c5cff44 inset}
+.player .name{font-size:12px;color:var(--muted)}.player .pts{font-size:23px;font-weight:800;margin-top:2px}
+.current{padding:18px;border-radius:15px;background:linear-gradient(135deg,#151a25,#0c1017);border:1px solid var(--line);text-align:center}
+.current .label{font-size:12px;color:var(--muted)}.current .word{font-size:40px;font-weight:900;letter-spacing:1px;margin:6px 0}.next{color:#c8d0dd;font-size:13px}
+.log{flex:1;overflow:auto;margin:14px 0;padding:8px 4px;max-height:280px}.entry{display:flex;gap:10px;padding:9px 7px;border-bottom:1px solid #1d232d;font-size:14px}.entry b{min-width:54px}.mine{color:#a99aff}.opp{color:#8bc8ff}
+.play{display:flex;gap:8px}.play input{font-size:18px}.hint{font-size:12px;color:var(--muted);margin-top:8px}.warn{color:#ffb45e}.ok{color:var(--ok)}.error{color:#ff8ca4}
+.hidden{display:none!important}.foot{color:#667185;font-size:11px;margin-top:15px;text-align:center}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.top{align-items:flex-start}.game{min-height:500px}.current .word{font-size:32px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><h1>끝말잇기 1v1</h1><div class="sub">끄글 단어 데이터 기반 · 방 코드로 친구와 대결</div></div>
+    <div class="badge" id="dataBadge">단어 데이터 불러오는 중…</div>
+  </div>
+
+  <div class="grid">
+    <aside class="panel stack">
+      <h2>대전 만들기</h2>
+      <button class="primary" id="hostBtn">방 만들기</button>
+      <div id="hostBox" class="hidden">
+        <div class="sub">친구에게 이 코드를 보내세요</div>
+        <div class="room" id="roomCode">----</div>
+        <button id="copyBtn" style="width:100%">코드 복사</button>
+      </div>
+
+      <div style="height:1px;background:var(--line);margin:4px 0"></div>
+      <h2>방 참가</h2>
+      <div class="row"><input id="joinInput" maxlength="24" placeholder="방 코드"><button id="joinBtn">참가</button></div>
+
+      <div class="status" id="netStatus">오프라인 대기 중</div>
+
+      <div class="toggle"><span>패배단어 경고</span><input type="checkbox" id="lossWarn" checked></div>
+      <div class="toggle"><span>패배단어 금지</span><input type="checkbox" id="lossBlock"></div>
+      <div class="toggle"><span>첫 단어 자유</span><input type="checkbox" id="freeFirst" checked></div>
+
+      <button id="localBtn">같은 기기 1v1 시작</button>
+      <button class="danger" id="resetBtn">게임 초기화</button>
+      <div class="hint">온라인 대전은 PeerJS를 이용한 브라우저 간 P2P 연결입니다. 두 사람 모두 인터넷이 필요합니다.</div>
+    </aside>
+
+    <main class="panel game">
+      <div class="score">
+        <div class="player active" id="p1"><div class="name">PLAYER 1</div><div class="pts" id="p1score">0</div></div>
+        <div class="player" id="p2"><div class="name">PLAYER 2</div><div class="pts" id="p2score">0</div></div>
+      </div>
+
+      <div class="current">
+        <div class="label">현재 단어</div>
+        <div class="word" id="currentWord">첫 단어를 입력하세요</div>
+        <div class="next" id="nextInfo">첫 단어는 자유롭게 시작할 수 있습니다.</div>
+      </div>
+
+      <div class="log" id="log"></div>
+
+      <div class="play">
+        <input id="wordInput" autocomplete="off" placeholder="단어 입력" disabled>
+        <button class="primary" id="submitBtn" disabled>제출</button>
+      </div>
+      <div class="hint" id="message">방을 만들거나 같은 기기 대전을 시작하세요.</div>
+    </main>
+  </div>
+  <div class="foot">사전 데이터: 사용자가 제공한 끄글 모든단어 / 패배단어 파일</div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const state={words:new Set(), loss:{}, index:{}, used:new Set(), current:"", turn:0, scores:[0,0], mode:"none", peer:null, conn:null, isHost:false, ready:false};
+const $=id=>document.getElementById(id);
+const setMsg=(s,c="")=>{$("message").textContent=s;$("message").className="hint "+c};
+function ui(){
+  $("currentWord").textContent=state.current||"첫 단어를 입력하세요";
+  $("nextInfo").textContent=state.current?`다음 단어는 “${state.current[state.current.length-1]}”로 시작해야 합니다.`:"첫 단어는 자유롭게 시작할 수 있습니다.";
+  $("p1score").textContent=state.scores[0];$("p2score").textContent=state.scores[1];
+  $("p1").classList.toggle("active",state.turn===0);$("p2").classList.toggle("active",state.turn===1);
+  const can=state.ready && (state.mode==="local" || state.turn===(state.isHost?0:1));
+  $("wordInput").disabled=!can;$("submitBtn").disabled=!can;
+}
+function addLog(word,who,extra=""){
+  const d=document.createElement("div");d.className="entry";
+  d.innerHTML=`<b class="${who===0?'mine':'opp'}">${who===0?'P1':'P2'}</b><span>${word}</span><span style="margin-left:auto;color:#788395">${extra}</span>`;
+  $("log").appendChild(d);$("log").scrollTop=$("log").scrollHeight;
+}
+function validate(word){
+  if(!word) return "단어를 입력하세요.";
+  if(!state.words.has(word)) return "사전에 없는 단어입니다.";
+  if(state.used.has(word)) return "이미 사용한 단어입니다.";
+  if(state.current && word[0]!==state.current[state.current.length-1]) return `“${state.current[state.current.length-1]}”로 시작해야 합니다.`;
+  if($("lossBlock").checked && state.loss[word]) return `패배단어라서 사용할 수 없습니다. (${state.loss[word]}턴)`;
+  return "";
+}
+function applyWord(word,who,send=true){
+  const err=validate(word); if(err){setMsg(err,"error");return false}
+  const danger=state.loss[word];
+  state.used.add(word);state.current=word;state.turn=1-who;state.scores[who]++;
+  addLog(word,who,danger&&$("lossWarn").checked?`⚠ ${danger}턴`:"");
+  if(danger&&$("lossWarn").checked)setMsg(`주의: ${word}은(는) ${danger}턴 패배단어입니다.`,"warn");
+  else setMsg("정상적으로 제출했습니다.","ok");
+  ui();
+  if(send&&state.conn&&state.conn.open) state.conn.send({type:"move",word,who});
+  return true;
+}
+function receiveMove(m){
+  if(m.type==="move"){
+    // Validate against synchronized state, then apply without echo.
+    applyWord(m.word,m.who,false);
+  }
+  if(m.type==="hello"){setMsg("상대방과 연결되었습니다.","ok");state.ready=true;ui()}
+  if(m.type==="sync"){
+    Object.assign(state,{current:m.current,turn:m.turn,scores:m.scores,used:new Set(m.used)});
+    $("log").innerHTML="";
+    m.history.forEach(x=>addLog(x.word,x.who,x.extra||""));
+    state.ready=true;ui();
+  }
+}
+function host(){
+  if(typeof Peer==="undefined"){setMsg("온라인 연결 라이브러리를 불러오지 못했습니다. 같은 기기 모드를 이용하세요.","error");return}
+  state.isHost=true;state.mode="online";state.ready=false;
+  state.peer=new Peer();
+  state.peer.on("open",id=>{$("roomCode").textContent=id;$("hostBox").classList.remove("hidden");$("netStatus").textContent="방 생성됨 · 친구를 기다리는 중";setMsg("친구가 방 코드로 참가하면 시작됩니다.")});
+  state.peer.on("connection",conn=>{
+    if(state.conn){conn.close();return}
+    state.conn=conn;
+    conn.on("open",()=>{state.ready=true;conn.send({type:"hello"});conn.send({type:"sync",current:state.current,turn:state.turn,scores:state.scores,used:[...state.used],history:[]});$("netStatus").textContent="상대 연결됨";setMsg("대전을 시작하세요.","ok");ui()});
+    conn.on("data",receiveMove);conn.on("close",()=>{state.ready=false;setMsg("상대방 연결이 끊어졌습니다.","error");ui()});
+  });
+  state.peer.on("error",e=>setMsg("온라인 연결 오류: "+e.type,"error"));
+}
+function join(){
+  if(typeof Peer==="undefined"){setMsg("온라인 연결 라이브러리를 불러오지 못했습니다.","error");return}
+  const id=$("joinInput").value.trim();if(!id)return;
+  state.isHost=false;state.mode="online";state.ready=false;state.peer=new Peer();
+  state.peer.on("open",()=>{state.conn=state.peer.connect(id);$("netStatus").textContent="방에 연결 중…";
+    state.conn.on("open",()=>{state.ready=true;state.conn.send({type:"hello"});setMsg("방에 참가했습니다.","ok");ui()});
+    state.conn.on("data",receiveMove);state.conn.on("close",()=>{state.ready=false;setMsg("상대방 연결이 끊어졌습니다.","error");ui()});
+  });
+  state.peer.on("error",e=>setMsg("방 참가 실패: "+e.type,"error"));
+}
+async function load(){
+  const [words,loss,index]=await Promise.all([
+    fetch("words.json").then(r=>r.json()),fetch("loss.json").then(r=>r.json()),fetch("index.json").then(r=>r.json())
+  ]);
+  state.words=new Set(words);state.loss=loss;state.index=index;
+  $("dataBadge").textContent=`${words.length.toLocaleString()}개 단어`;
+  setMsg("데이터 준비 완료. 대전을 시작하세요.","ok");
+}
+$("hostBtn").onclick=host;$("joinBtn").onclick=join;
+$("copyBtn").onclick=()=>navigator.clipboard?.writeText($("roomCode").textContent);
+$("localBtn").onclick=()=>{state.mode="local";state.ready=true;state.isHost=true;state.current="";state.turn=0;state.scores=[0,0];state.used.clear();$("log").innerHTML="";$("netStatus").textContent="같은 기기 1v1";setMsg("PLAYER 1부터 시작하세요.","ok");ui()};
+$("resetBtn").onclick=()=>location.reload();
+$("submitBtn").onclick=()=>{const w=$("wordInput").value.trim();if(applyWord(w,state.mode==="local"?state.turn:(state.isHost?0:1),true))$("wordInput").value=""};
+$("wordInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("submitBtn").click()});
+load().catch(e=>{console.error(e);$("dataBadge").textContent="데이터 로드 실패";setMsg("words.json / loss.json / index.json 파일을 같은 폴더에 두세요.","error")});
+</script>
+</body>
+</html>
