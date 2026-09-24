@@ -1,6 +1,7 @@
 // ===== Firebase Realtime Database REST 래퍼 (SDK 불필요) =====
 const FB = (() => {
   const BASE = 'https://wordchainarena-default-rtdb.asia-southeast1.firebasedatabase.app';
+  const START_COINS = 1000; // 신규 가입 시 지급되는 시작 코인
 
   async function getRoom(code) {
     const res = await fetch(`${BASE}/rooms/${code}.json`);
@@ -42,7 +43,7 @@ const FB = (() => {
     const players = {};
     Object.keys(room.players || {}).forEach(pid => { players[pid] = { ...room.players[pid], alive: true }; });
     await patchRoom(code, { players, status: 'waiting', turnIndex: 0, usedWords: [], history: [],
-      currentSyllable: null, winnerId: null, turnStartedAt: null });
+      currentSyllable: null, winnerId: null, turnStartedAt: null, pot: null, payoutDone: false });
   }
 
   // 끝난 방(3분 경과)·오래된 방(6시간) 자동 삭제
@@ -57,33 +58,24 @@ const FB = (() => {
     }
   }
 
-  // ---- 접속자 / IP 차단 ----
-  const ipKey = ip => String(ip).replace(/[.:]/g, '_');
-  let cachedIP = null;
-  async function getIP() {
-    if (cachedIP) return cachedIP;
-    for (const u of ['https://api.ipify.org?format=json', 'https://api64.ipify.org?format=json']) {
-      try { const j = await (await fetch(u)).json(); if (j.ip) return (cachedIP = j.ip); } catch (e) { /* 다음 주소 시도 */ }
-    }
-    return null;
-  }
+  // ---- 접속자 / 사용자 차단 ----
   async function heartbeat(clientId, info) {
     await fetch(`${BASE}/presence/${clientId}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(info) });
   }
   async function listPresence() { return (await (await fetch(`${BASE}/presence.json`)).json()) || {}; }
   async function deletePresence(id) { await fetch(`${BASE}/presence/${id}.json`, { method: 'DELETE' }); }
-  async function isBlocked(ip) {
-    const res = await fetch(`${BASE}/blocked/${ipKey(ip)}.json`);
+  async function isUserBlocked(username) {
+    const res = await fetch(`${BASE}/blockedUsers/${encodeURIComponent(username)}.json`);
     if (!res.ok) throw new Error('차단 목록 읽기 실패');
     return (await res.json()) != null;
   }
-  async function listBlocked() { return (await (await fetch(`${BASE}/blocked.json`)).json()) || {}; }
-  async function blockIP(ip, reason) {
-    const res = await fetch(`${BASE}/blocked/${ipKey(ip)}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ip, reason: reason || '', at: Date.now() }) });
-    if (!res.ok) throw new Error('차단 실패 (Firebase 규칙에 /blocked 쓰기 권한이 필요합니다)');
+  async function listBlockedUsers() { return (await (await fetch(`${BASE}/blockedUsers.json`)).json()) || {}; }
+  async function blockUser(username, reason) {
+    const res = await fetch(`${BASE}/blockedUsers/${encodeURIComponent(username)}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, reason: reason || '', at: Date.now() }) });
+    if (!res.ok) throw new Error('차단 실패 (Firebase 규칙에 /blockedUsers 쓰기 권한이 필요합니다)');
   }
-  async function unblockIP(ip) { await fetch(`${BASE}/blocked/${ipKey(ip)}.json`, { method: 'DELETE' }); }
+  async function unblockUser(username) { await fetch(`${BASE}/blockedUsers/${encodeURIComponent(username)}.json`, { method: 'DELETE' }); }
 
   async function getConfig() {
     const res = await fetch(`${BASE}/config.json`);
@@ -96,6 +88,88 @@ const FB = (() => {
     });
     if (!res.ok) throw new Error('저장 실패 (Firebase 규칙에 /config 쓰기 권한이 필요합니다)');
     return res.json();
+  }
+
+  // ---- 계정(아이디/비밀번호) — 이 앱은 서버가 없어 비밀번호 해시를 클라이언트가 직접 비교합니다.
+  // 즉, DB 규칙이 열려 있으면 누구나 해시를 읽어갈 수 있어 오프라인 크래킹에 취약합니다.
+  // 실제 자산이 걸린 서비스가 아니라 재미용 게임머니 용도로만 사용하세요 (다른 곳과 같은 비밀번호 재사용 금지).
+  const ID_RE = /^[A-Za-z0-9가-힣_]{2,16}$/;
+
+  async function sha256Hex(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function randomHex(bytes) {
+    const arr = crypto.getRandomValues(new Uint8Array(bytes));
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function hashPassword(password, salt) {
+    let h = `${salt}:${password}`;
+    for (let i = 0; i < 1000; i++) h = await sha256Hex(h); // 약한 형태의 반복 해시 (bcrypt 대체 아님)
+    return h;
+  }
+  async function getAuthRecord(username) {
+    const res = await fetch(`${BASE}/auth/${encodeURIComponent(username)}.json`);
+    if (!res.ok) throw new Error('계정 확인에 실패했습니다.');
+    return res.json();
+  }
+  async function signup(username, password) {
+    username = (username || '').trim();
+    if (!ID_RE.test(username)) throw new Error('아이디는 영문/숫자/한글 2~16자로 입력하세요.');
+    if (!password || password.length < 4) throw new Error('비밀번호는 4자 이상이어야 합니다.');
+    const existing = await getAuthRecord(username);
+    if (existing) throw new Error('이미 사용 중인 아이디입니다.');
+    const salt = randomHex(16);
+    const hash = await hashPassword(password, salt);
+    const putRes = await fetch(`${BASE}/auth/${encodeURIComponent(username)}.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ salt, hash, createdAt: Date.now() })
+    });
+    if (!putRes.ok) throw new Error('가입 실패 (Firebase 규칙에 /auth 쓰기 권한이 필요합니다)');
+    await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coins: START_COINS, createdAt: Date.now() })
+    });
+    return { username, coins: START_COINS };
+  }
+  async function login(username, password) {
+    username = (username || '').trim();
+    if (!username || !password) throw new Error('아이디와 비밀번호를 입력하세요.');
+    const rec = await getAuthRecord(username);
+    if (!rec) throw new Error('존재하지 않는 아이디입니다.');
+    const hash = await hashPassword(password, rec.salt);
+    if (hash !== rec.hash) throw new Error('비밀번호가 일치하지 않습니다.');
+    return { username };
+  }
+
+  // ---- 코인 지갑 ----
+  async function getWallet(username) {
+    const res = await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`);
+    if (!res.ok) throw new Error('코인 정보를 불러오지 못했습니다.');
+    return (await res.json()) || { coins: 0 };
+  }
+  async function adjustWallet(username, delta) {
+    // Firebase 서버 증분(.sv increment)으로 동시 수정 시에도 비교적 안전하게 반영
+    const res = await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coins: { '.sv': { increment: delta } } })
+    });
+    if (!res.ok) throw new Error('코인 갱신에 실패했습니다.');
+  }
+  async function listWallets() {
+    const res = await fetch(`${BASE}/users.json`);
+    if (!res.ok) throw new Error('랭킹을 불러오지 못했습니다.');
+    return (await res.json()) || {};
+  }
+  // 관리자용: 코인을 절대값으로 직접 설정 (adjustWallet은 상대적 증감)
+  async function setWallet(username, coins) {
+    const n = Math.max(0, Math.round(Number(coins) || 0));
+    const res = await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coins: n })
+    });
+    if (!res.ok) throw new Error('코인 설정에 실패했습니다.');
+    return n;
   }
 
   function genCode() {
@@ -160,16 +234,30 @@ const FB = (() => {
   async function startGame(code, room) {
     Game.init();
     if (room.settings) Game.setSettings(room.settings);
-    const st = Game.newStart();
+    const bet = Math.max(0, (room.settings && room.settings.bet) || 0);
     const fresh = (await getRoom(code)) || room;           // 최신 참가자 명단으로 순서 확정
+    const order = orderFromPlayers(fresh.players, fresh.hostId);
+    if (bet > 0) {
+      // 시작 전 전원 잔액 확인 (부족하면 시작하지 않음)
+      for (const pid of order) {
+        const uname = (fresh.players[pid] || {}).name;
+        const w = await getWallet(uname);
+        if ((w.coins || 0) < bet) throw new Error(`${uname}님의 코인이 부족합니다. (보유 ${w.coins || 0} / 필요 ${bet})`);
+      }
+      // 확인 후 전원 차감
+      for (const pid of order) await adjustWallet((fresh.players[pid] || {}).name, -bet);
+    }
+    const st = Game.newStart();
     await patchRoom(code, {
-      order: orderFromPlayers(fresh.players, fresh.hostId),
+      order,
       status: 'playing',
       currentSyllable: st.syll,
       usedWords: st.word ? [st.word] : [],
       history: [{ playerId: 'system', name: st.label, word: st.word || st.syll, ts: Date.now() }],
       turnStartedAt: Date.now(),
-      turnIndex: 0
+      turnIndex: 0,
+      pot: bet * order.length,
+      payoutDone: false
     });
   }
 
@@ -202,15 +290,23 @@ const FB = (() => {
     const players = { ...room.players };
     const curPid = order[room.turnIndex];
     if (!players[curPid] || !players[curPid].alive) return; // 이미 처리됨
+    const fresh = (await getRoom(code)) || room;
+    if (fresh.status === 'finished') return; // 다른 클라이언트가 이미 종료 처리함
     players[curPid] = { ...players[curPid], alive: false };
     const aliveIds = order.filter(pid => players[pid] && players[pid].alive);
     if (aliveIds.length <= 1) {
+      const winnerId = aliveIds[0] || null;
       await patchRoom(code, {
         players,
         status: 'finished',
         finishedAt: Date.now(),
-        winnerId: aliveIds[0] || null
+        winnerId,
+        payoutDone: true
       });
+      if (!fresh.payoutDone && winnerId && fresh.pot) {
+        const winnerName = (players[winnerId] || {}).name;
+        if (winnerName) await adjustWallet(winnerName, fresh.pot).catch(() => {});
+      }
       return;
     }
     const nextIdx = nextAliveIndex(order, players, room.turnIndex);
@@ -227,8 +323,9 @@ const FB = (() => {
 
   return {
     getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig, listRooms, resetRoom, sweep,
-    getIP, heartbeat, listPresence, deletePresence, isBlocked, listBlocked, blockIP, unblockIP,
+    heartbeat, listPresence, deletePresence, isUserBlocked, listBlockedUsers, blockUser, unblockUser,
     createRoom, joinRoom, leaveRoom, startGame, submitWord,
-    eliminateCurrentPlayer, nextAliveIndex, uid
+    eliminateCurrentPlayer, nextAliveIndex, uid,
+    signup, login, getWallet, adjustWallet, setWallet, listWallets, START_COINS
   };
 })();
