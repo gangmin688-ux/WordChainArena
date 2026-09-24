@@ -176,7 +176,14 @@ const FB = (() => {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 
-  async function createRoom(hostName, hostId, settings) {
+  // ---- 참가비 (베팅이 아닌, 게임 시작 시 무작위로 정해지는 금액) ----
+  const FEE_MIN = 5000, FEE_MAX = 100000, FEE_STEP = 5000;
+  function randomEntryFee() {
+    const steps = Math.floor((FEE_MAX - FEE_MIN) / FEE_STEP) + 1;
+    return FEE_MIN + Math.floor(Math.random() * steps) * FEE_STEP;
+  }
+
+  async function createRoom(hostName, hostId, settings, hostTitle, isPublic) {
     for (let i = 0; i < 10; i++) {
       const code = genCode();
       const existing = await getRoom(code);
@@ -186,10 +193,11 @@ const FB = (() => {
         createdAt: Date.now(),
         hostId,
         status: 'waiting',
+        isPublic: !!isPublic,
         turnSeconds: (settings && settings.turnSeconds) || 20,
         settings: settings || null,
         players: {
-          [hostId]: { name: hostName, alive: true, joinedAt: Date.now() }
+          [hostId]: { name: hostName, alive: true, joinedAt: Date.now(), title: hostTitle || null }
         },
         order: [hostId],
         turnIndex: 0,
@@ -205,6 +213,16 @@ const FB = (() => {
     throw new Error('방 코드를 생성하지 못했습니다. 다시 시도해주세요.');
   }
 
+  // 참가자 모집 중인 공개방 목록 (방 코드 없이 참가 가능)
+  async function listPublicRooms() {
+    const rooms = await listRooms();
+    sweep(rooms).catch(() => {});
+    const arr = Object.values(rooms).filter(r => r && r.status === 'waiting' && r.isPublic
+      && Date.now() - (r.createdAt || 0) < 6 * 3600e3);
+    arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return arr;
+  }
+
   // 방장 먼저, 이후 입장 순서
   function orderFromPlayers(players, hostId) {
     return Object.keys(players || {}).sort((x, y) => {
@@ -214,12 +232,12 @@ const FB = (() => {
     });
   }
 
-  async function joinRoom(code, name, playerId) {
+  async function joinRoom(code, name, playerId, title) {
     const room = await getRoom(code);
     if (!room) throw new Error('존재하지 않는 방 코드입니다.');
     if (room.status !== 'waiting') throw new Error('이미 시작된 게임입니다.');
     // 내 항목만 원자적으로 추가 (players 전체를 덮어쓰지 않음)
-    await patchRoom(code, { ['players/' + playerId]: { name, alive: true, joinedAt: Date.now() } });
+    await patchRoom(code, { ['players/' + playerId]: { name, alive: true, joinedAt: Date.now(), title: title || null } });
     const fresh = await getRoom(code);
     if (!fresh) throw new Error('방이 사라졌습니다.');
     const order = orderFromPlayers(fresh.players, fresh.hostId);
@@ -234,19 +252,17 @@ const FB = (() => {
   async function startGame(code, room) {
     Game.init();
     if (room.settings) Game.setSettings(room.settings);
-    const bet = Math.max(0, (room.settings && room.settings.bet) || 0);
+    const fee = randomEntryFee(); // 베팅이 아닌, 게임 시작 시 무작위로 정해지는 참가비 (5,000~100,000원, 5,000원 단위)
     const fresh = (await getRoom(code)) || room;           // 최신 참가자 명단으로 순서 확정
     const order = orderFromPlayers(fresh.players, fresh.hostId);
-    if (bet > 0) {
-      // 시작 전 전원 잔액 확인 (부족하면 시작하지 않음)
-      for (const pid of order) {
-        const uname = (fresh.players[pid] || {}).name;
-        const w = await getWallet(uname);
-        if ((w.coins || 0) < bet) throw new Error(`${uname}님의 코인이 부족합니다. (보유 ${w.coins || 0} / 필요 ${bet})`);
-      }
-      // 확인 후 전원 차감
-      for (const pid of order) await adjustWallet((fresh.players[pid] || {}).name, -bet);
+    // 시작 전 전원 잔액 확인 (부족하면 시작하지 않음)
+    for (const pid of order) {
+      const uname = (fresh.players[pid] || {}).name;
+      const w = await getWallet(uname);
+      if ((w.coins || 0) < fee) throw new Error(`${uname}님의 코인이 부족합니다. (보유 ${(w.coins || 0).toLocaleString()} / 필요 ${fee.toLocaleString()})`);
     }
+    // 확인 후 전원 차감
+    for (const pid of order) await adjustWallet((fresh.players[pid] || {}).name, -fee);
     const st = Game.newStart();
     await patchRoom(code, {
       order,
@@ -256,7 +272,8 @@ const FB = (() => {
       history: [{ playerId: 'system', name: st.label, word: st.word || st.syll, ts: Date.now() }],
       turnStartedAt: Date.now(),
       turnIndex: 0,
-      pot: bet * order.length,
+      entryFee: fee,
+      pot: fee * order.length,
       payoutDone: false
     });
   }
@@ -321,11 +338,51 @@ const FB = (() => {
     return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
 
+  // ---- 칭호(타이틀) 상점 ----
+  async function listTitles() {
+    const res = await fetch(`${BASE}/titles.json`);
+    if (!res.ok) throw new Error('칭호 목록을 불러오지 못했습니다.');
+    return (await res.json()) || {};
+  }
+  async function addTitle(name, price) {
+    name = (name || '').trim();
+    if (!name) throw new Error('칭호 이름을 입력하세요.');
+    price = Math.max(0, Math.round(Number(price) || 0));
+    const id = 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const res = await fetch(`${BASE}/titles/${id}.json`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, price, createdAt: Date.now() })
+    });
+    if (!res.ok) throw new Error('칭호 추가 실패 (Firebase 규칙에 /titles 쓰기 권한이 필요합니다)');
+    return id;
+  }
+  async function deleteTitle(id) {
+    await fetch(`${BASE}/titles/${id}.json`, { method: 'DELETE' });
+  }
+  async function buyTitle(username, titleId, price) {
+    const w = await getWallet(username);
+    if (w.ownedTitles && w.ownedTitles[titleId]) throw new Error('이미 보유한 칭호입니다.');
+    if ((w.coins || 0) < price) throw new Error('코인이 부족합니다.');
+    const res = await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coins: { '.sv': { increment: -price } }, ['ownedTitles/' + titleId]: true })
+    });
+    if (!res.ok) throw new Error('구매에 실패했습니다.');
+  }
+  async function equipTitle(username, titleId) {
+    const res = await fetch(`${BASE}/users/${encodeURIComponent(username)}.json`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ equippedTitle: titleId || null })
+    });
+    if (!res.ok) throw new Error('칭호 장착에 실패했습니다.');
+  }
+
   return {
     getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig, listRooms, resetRoom, sweep,
     heartbeat, listPresence, deletePresence, isUserBlocked, listBlockedUsers, blockUser, unblockUser,
-    createRoom, joinRoom, leaveRoom, startGame, submitWord,
+    createRoom, joinRoom, leaveRoom, startGame, submitWord, listPublicRooms,
     eliminateCurrentPlayer, nextAliveIndex, uid,
-    signup, login, getWallet, adjustWallet, setWallet, listWallets, START_COINS
+    signup, login, getWallet, adjustWallet, setWallet, listWallets, START_COINS,
+    listTitles, addTitle, deleteTitle, buyTitle, equipTitle
   };
 })();

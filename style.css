@@ -123,6 +123,8 @@ select { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid
 .rank-row .rank-coins { color: var(--good); font-weight: 700; }
 .rank-row.me { outline: 2px solid var(--accent); background: #223244; }
 
+.title-tag { color: #ffd76a; font-weight: 700; }
+
 .pot-badge {
   text-align: center; font-size: 14px; font-weight: 700; color: #2a0b12;
   background: linear-gradient(90deg, #ffd76a, var(--accent2));

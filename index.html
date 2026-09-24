@@ -28,6 +28,7 @@
           <div class="small">💰 보유 코인 <b id="account-coins">0</b></div>
         </div>
         <button class="btn ghost" data-go="ranking" style="width:auto; padding:8px 14px;">🏆 랭킹</button>
+        <button class="btn ghost" id="menu-shop-btn" style="width:auto; padding:8px 14px;">🏷️ 칭호 상점</button>
         <button class="btn danger" id="logout-btn" style="width:auto; padding:8px 14px;">로그아웃</button>
       </div>
     </div>
@@ -96,6 +97,20 @@
     <button class="btn ghost" data-go="menu">뒤로</button>
   </section>
 
+  <!-- 칭호 상점 -->
+  <section id="screen-shop" class="screen">
+    <h1 class="logo" style="font-size:24px;">🏷️ 칭호 상점</h1>
+    <div class="card">
+      <div class="small">보유 코인 💰 <b id="shop-mycoins">0</b> · 현재 장착 <b id="shop-equipped">없음</b></div>
+    </div>
+    <div class="card">
+      <label>칭호 목록 (가격 낮은 순)</label>
+      <div id="shop-list" class="list-scroll">불러오는 중...</div>
+    </div>
+    <div class="card small">구매한 칭호는 온라인 대전 중 상대방에게, 그리고 랭킹 화면에서 닉네임 오른쪽에 [칭호] 형태로 표시됩니다.</div>
+    <button class="btn ghost" data-go="menu">뒤로</button>
+  </section>
+
   <!-- 컴퓨터 대전 설정 -->
   <section id="screen-cpu-setup" class="screen">
     <h1 class="logo" style="font-size:24px;">컴퓨터 대전 설정</h1>
@@ -134,9 +149,12 @@
     <h1 class="logo" style="font-size:24px;">방 만들기</h1>
     <div class="card">
       <div class="small" style="margin-bottom:8px;">아이디: <b id="create-username">-</b> · 보유 코인 <b id="create-mycoins">0</b></div>
-      <label>판돈 (인당 베팅 코인, 0이면 코인 없이 재미로만)</label>
-      <input type="number" id="create-bet" min="0" step="10" value="0" placeholder="예: 100">
-      <div class="small" id="create-bet-note" style="margin-bottom:8px;"></div>
+      <div class="small" style="margin-bottom:14px;">💰 베팅이 아닙니다. 게임을 시작하면 참가비가 <b>5,000원~100,000원(5,000원 단위)</b> 중 무작위로 정해져 참가자 전원에게 부과되며, 이긴 사람이 판돈 전부를 가져갑니다.</div>
+      <label>방 공개 설정</label>
+      <select id="create-public">
+        <option value="1">🌐 공개 — 다른 사람이 방 코드 없이 "방 참가" 화면 목록에서 바로 참가</option>
+        <option value="0">🔒 비공개 — 방 코드를 아는 사람만 참가 가능</option>
+      </select>
       <div id="create-settings"></div>
       <button class="btn primary" id="create-room-btn">방 만들기</button>
       <div class="error-msg" id="create-error"></div>
@@ -154,6 +172,10 @@
       <button class="btn primary" id="join-room-btn">참가하기</button>
       <div class="error-msg" id="join-error"></div>
     </div>
+    <div class="card">
+      <label>🌐 공개방 목록 (참가자 모집 중, 3초마다 갱신)</label>
+      <div id="join-public-rooms" class="small list-scroll">불러오는 중...</div>
+    </div>
     <button class="btn ghost" data-go="menu">뒤로</button>
   </section>
 
@@ -165,7 +187,7 @@
       <div class="room-code" id="lobby-code">----</div>
       <div class="small">친구에게 이 코드를 알려주세요</div>
     </div>
-    <div class="card small hidden" id="lobby-pot-box"></div>
+    <div class="card small" id="lobby-pot-box">💰 베팅이 아닙니다. 게임 시작 시 <b>5,000원~100,000원(5,000원 단위)</b> 참가비가 무작위로 정해져 전원에게 부과되며, 이긴 사람이 판돈 전부를 획득합니다.</div>
     <div class="card">
       <label>참가자 (<span id="lobby-count">0</span>명)</label>
       <ul class="player-list" id="lobby-players"></ul>

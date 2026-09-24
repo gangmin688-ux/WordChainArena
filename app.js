@@ -21,6 +21,7 @@ function stopAllLoops() {
   ONLINE.tickHandle = null;
   LOCAL.timerHandle = null;
   CURRENT_MODE = null;
+  if (typeof stopPublicRoomsPoll === 'function') stopPublicRoomsPoll();
 }
 
 Game.init();
@@ -42,6 +43,29 @@ function clearSession() {
   localStorage.removeItem('wca_user');
 }
 
+function escHtml(s) {
+  return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+// ============================================================
+// 칭호(타이틀) 캐시
+// ============================================================
+let TITLES_CACHE = null;
+async function loadTitlesCache(force) {
+  if (TITLES_CACHE && !force) return TITLES_CACHE;
+  try { TITLES_CACHE = await FB.listTitles(); } catch (e) { TITLES_CACHE = TITLES_CACHE || {}; }
+  return TITLES_CACHE;
+}
+async function myEquippedTitleName() {
+  try {
+    const w = await FB.getWallet(AUTH.username);
+    if (!w.equippedTitle) return null;
+    await loadTitlesCache();
+    const t = TITLES_CACHE[w.equippedTitle];
+    return t ? t.name : null;
+  } catch (e) { return null; }
+}
+
 async function refreshAccountUI() {
   const guest = document.getElementById('account-guest');
   const user = document.getElementById('account-user');
@@ -54,6 +78,9 @@ async function refreshAccountUI() {
   try {
     const w = await FB.getWallet(AUTH.username);
     document.getElementById('account-coins').textContent = (w.coins || 0).toLocaleString();
+    await loadTitlesCache();
+    const t = w.equippedTitle && TITLES_CACHE[w.equippedTitle];
+    document.getElementById('account-name').textContent = `👤 ${AUTH.username}${t ? ` [${t.name}]` : ''}`;
   } catch (e) { /* 무시 */ }
 }
 
@@ -113,17 +140,44 @@ document.getElementById('menu-online-join').addEventListener('click', async () =
     document.getElementById('join-mycoins').textContent = (w.coins || 0).toLocaleString();
   } catch (e) { document.getElementById('join-mycoins').textContent = '?'; }
   goScreen('online-join');
+  startPublicRoomsPoll();
 });
 
-document.getElementById('create-bet').addEventListener('input', () => {
-  const bet = Math.max(0, parseInt(document.getElementById('create-bet').value) || 0);
-  document.getElementById('create-bet-note').textContent = bet > 0
-    ? `참가자 전원이 ${bet.toLocaleString()} 코인씩 걸고 시작하며, 이긴 사람이 판돈 전부를 가져갑니다.`
-    : '';
-});
+// ============================================================
+// 공개방 목록 (방 참가 화면 — 코드 입력 없이 바로 참가)
+// ============================================================
+let PUBLIC_ROOMS_POLL = null;
+function startPublicRoomsPoll() {
+  clearInterval(PUBLIC_ROOMS_POLL);
+  refreshPublicRooms();
+  PUBLIC_ROOMS_POLL = setInterval(refreshPublicRooms, 3000);
+}
+function stopPublicRoomsPoll() {
+  clearInterval(PUBLIC_ROOMS_POLL);
+  PUBLIC_ROOMS_POLL = null;
+}
+async function refreshPublicRooms() {
+  if (!document.getElementById('screen-online-join').classList.contains('active')) { stopPublicRoomsPoll(); return; }
+  const el = document.getElementById('join-public-rooms');
+  try {
+    const arr = await FB.listPublicRooms();
+    el.innerHTML = arr.length ? arr.map(r => {
+      const ids = Object.keys(r.players || {});
+      const host = (r.players[r.hostId] || {}).name || '?';
+      return `<div class="rank-row"><div class="rank-name">방 ${escHtml(r.code)} · 방장 ${escHtml(host)}</div>
+        <div class="small">${ids.length}명 대기 중</div>
+        <button class="btn primary" data-joincode="${escHtml(r.code)}" style="width:auto; padding:6px 14px; font-size:13px;">참가</button></div>`;
+    }).join('') : '현재 참가자 모집 중인 공개방이 없습니다.';
+    el.querySelectorAll('button[data-joincode]').forEach(b => b.addEventListener('click', () => {
+      document.getElementById('join-code').value = b.dataset.joincode;
+      document.getElementById('join-room-btn').click();
+    }));
+  } catch (e) { el.textContent = '공개방 목록을 불러오지 못했습니다.'; }
+}
 
 restoreSession();
 refreshAccountUI();
+loadTitlesCache();
 
 // ============================================================
 // 코인 랭킹
@@ -133,16 +187,63 @@ async function loadRanking() {
   const el = document.getElementById('ranking-list');
   el.textContent = '불러오는 중...';
   try {
-    const wallets = await FB.listWallets();
-    const arr = Object.entries(wallets).map(([name, w]) => ({ name, coins: (w && w.coins) || 0 }))
+    const [wallets] = await Promise.all([FB.listWallets(), loadTitlesCache()]);
+    const arr = Object.entries(wallets).map(([name, w]) => ({ name, coins: (w && w.coins) || 0, equippedTitle: w && w.equippedTitle }))
       .sort((a, b) => b.coins - a.coins).slice(0, 100);
-    el.innerHTML = arr.length ? arr.map((r, i) => `
+    el.innerHTML = arr.length ? arr.map((r, i) => {
+      const t = r.equippedTitle && TITLES_CACHE[r.equippedTitle];
+      const nameHtml = escHtml(r.name) + (t ? ` <span class="title-tag">[${escHtml(t.name)}]</span>` : '');
+      return `
       <div class="rank-row ${r.name === AUTH.username ? 'me' : ''}">
         <div class="rank-num">${i + 1}</div>
-        <div class="rank-name">${r.name}${r.name === AUTH.username ? ' (나)' : ''}</div>
+        <div class="rank-name">${nameHtml}${r.name === AUTH.username ? ' (나)' : ''}</div>
         <div class="rank-coins">💰 ${r.coins.toLocaleString()}</div>
-      </div>`).join('') : '<div class="center-msg">아직 등록된 플레이어가 없습니다.</div>';
+      </div>`;
+    }).join('') : '<div class="center-msg">아직 등록된 플레이어가 없습니다.</div>';
   } catch (e) { el.textContent = '랭킹을 불러오지 못했습니다.'; }
+}
+
+// ============================================================
+// 칭호 상점
+// ============================================================
+document.getElementById('menu-shop-btn').addEventListener('click', () => {
+  if (!AUTH.username) { goScreen('login'); return; }
+  goScreen('shop');
+  loadShop();
+});
+async function loadShop() {
+  const listEl = document.getElementById('shop-list');
+  listEl.textContent = '불러오는 중...';
+  try {
+    const [w, titles] = await Promise.all([FB.getWallet(AUTH.username), loadTitlesCache(true)]);
+    document.getElementById('shop-mycoins').textContent = (w.coins || 0).toLocaleString();
+    const equippedT = w.equippedTitle && titles[w.equippedTitle];
+    document.getElementById('shop-equipped').textContent = equippedT ? `[${equippedT.name}]` : '없음';
+    const arr = Object.entries(titles).map(([id, t]) => ({ id, name: (t && t.name) || '', price: (t && t.price) || 0 }))
+      .sort((a, b) => a.price - b.price);
+    const owned = w.ownedTitles || {};
+    listEl.innerHTML = arr.length ? arr.map(t => {
+      const has = !!owned[t.id];
+      const equipped = w.equippedTitle === t.id;
+      let btn;
+      if (equipped) btn = `<button class="btn danger" data-unequip="${t.id}" style="width:auto; padding:6px 14px; font-size:13px;">장착 해제</button>`;
+      else if (has) btn = `<button class="btn primary" data-equip="${t.id}" style="width:auto; padding:6px 14px; font-size:13px;">장착</button>`;
+      else btn = `<button class="btn accent2" data-buy="${t.id}" data-price="${t.price}" style="width:auto; padding:6px 14px; font-size:13px;">구매</button>`;
+      return `<div class="rank-row"><div class="rank-name">${escHtml(t.name)}</div><div class="rank-coins">💰 ${t.price.toLocaleString()}</div>${btn}</div>`;
+    }).join('') : '등록된 칭호가 없습니다. (관리자 패널에서 추가할 수 있습니다)';
+    listEl.querySelectorAll('button[data-buy]').forEach(b => b.addEventListener('click', async () => {
+      try { await FB.buyTitle(AUTH.username, b.dataset.buy, parseInt(b.dataset.price)); await loadShop(); await refreshAccountUI(); }
+      catch (e) { alert(e.message); }
+    }));
+    listEl.querySelectorAll('button[data-equip]').forEach(b => b.addEventListener('click', async () => {
+      try { await FB.equipTitle(AUTH.username, b.dataset.equip); await loadShop(); await refreshAccountUI(); }
+      catch (e) { alert(e.message); }
+    }));
+    listEl.querySelectorAll('button[data-unequip]').forEach(b => b.addEventListener('click', async () => {
+      try { await FB.equipTitle(AUTH.username, null); await loadShop(); await refreshAccountUI(); }
+      catch (e) { alert(e.message); }
+    }));
+  } catch (e) { listEl.textContent = '불러오지 못했습니다.'; }
 }
 
 // ============================================================
@@ -309,10 +410,11 @@ document.getElementById('create-room-btn').addEventListener('click', async () =>
   const errEl = document.getElementById('create-error');
   errEl.textContent = '';
   if (!name) { goScreen('login'); return; }
-  const bet = Math.max(0, parseInt(document.getElementById('create-bet').value) || 0);
-  const settings = { ...readSettings('cs'), bet };
+  const settings = readSettings('cs');
+  const isPublic = document.getElementById('create-public').value === '1';
   try {
-    const room = await FB.createRoom(name, ONLINE.myId, settings);
+    const title = await myEquippedTitleName();
+    const room = await FB.createRoom(name, ONLINE.myId, settings, title, isPublic);
     ONLINE.code = room.code;
     ONLINE.myName = name;
     ONLINE.room = room;
@@ -330,7 +432,8 @@ document.getElementById('join-room-btn').addEventListener('click', async () => {
   if (!name) { goScreen('login'); return; }
   if (!code) { errEl.textContent = '방 코드를 입력하세요.'; return; }
   try {
-    const room = await FB.joinRoom(code, name, ONLINE.myId);
+    const title = await myEquippedTitleName();
+    const room = await FB.joinRoom(code, name, ONLINE.myId, title);
     ONLINE.code = code;
     ONLINE.myName = name;
     ONLINE.room = room;
@@ -342,6 +445,7 @@ document.getElementById('join-room-btn').addEventListener('click', async () => {
 
 function enterLobby(isHost) {
   CURRENT_MODE = 'online'; LAST_MODE = 'online'; ONLINE.resultShown = false; ONLINE.potFxShown = false; ONLINE.payoutFxShown = false;
+  stopPublicRoomsPoll();
   goScreen('lobby');
   document.getElementById('lobby-code').textContent = ONLINE.code;
   document.getElementById('lobby-start-btn').style.display = isHost ? 'block' : 'none';
@@ -383,9 +487,11 @@ async function pollOnlineRoom() {
       clearInterval(ONLINE.tickHandle);   // 폴링은 유지 (방장이 다시 플레이를 누르면 대기실로 복귀)
       if (!ONLINE.resultShown) {
         ONLINE.resultShown = true;
-        const winnerName = room.winnerId && room.players[room.winnerId] ? room.players[room.winnerId].name : '무승부';
+        const winner = room.winnerId && room.players[room.winnerId];
+        const winnerName = winner ? winner.name : '무승부';
+        const winnerTitle = winner ? winner.title : null;
         const hist = (room.history || []).map(h => ({ who: h.name, word: h.word }));
-        endGame(winnerName, hist, true, room.pot || 0);
+        endGame(winnerName, hist, true, room.pot || 0, winnerTitle);
       }
     }
   } catch (e) {
@@ -420,17 +526,10 @@ function renderLobby(room) {
   ul.innerHTML = '';
   ids.forEach(pid => {
     const li = document.createElement('li');
-    li.textContent = players[pid].name + (pid === room.hostId ? ' (방장)' : '');
+    const p = players[pid];
+    li.innerHTML = `<span>${escHtml(p.name)}${p.title ? ` <span class="title-tag">[${escHtml(p.title)}]</span>` : ''}${pid === room.hostId ? ' (방장)' : ''}</span>`;
     ul.appendChild(li);
   });
-  const bet = (room.settings && room.settings.bet) || 0;
-  const box = document.getElementById('lobby-pot-box');
-  if (bet > 0) {
-    box.classList.remove('hidden');
-    box.innerHTML = `💰 인당 판돈 <b>${bet.toLocaleString()}</b> 코인 · 예상 총 판돈 <b>${(bet * ids.length).toLocaleString()}</b> 코인 (이긴 사람이 전부 획득)`;
-  } else {
-    box.classList.add('hidden'); box.innerHTML = '';
-  }
 }
 
 function onlineTick() {
@@ -468,7 +567,8 @@ function renderOnlineGame(room) {
   const playersArr = order.map(pid => ({
     id: pid,
     name: room.players[pid] ? room.players[pid].name : '?',
-    alive: room.players[pid] ? room.players[pid].alive : false
+    alive: room.players[pid] ? room.players[pid].alive : false,
+    title: room.players[pid] ? room.players[pid].title : null
   }));
   renderPlayerList(playersArr, room.turnIndex);
   document.getElementById('game-syllable').textContent = room.currentSyllable || '-';
@@ -516,9 +616,10 @@ function renderPlayerList(players, turnIndex) {
   ul.innerHTML = '';
   players.forEach((p, i) => {
     const li = document.createElement('li');
-    li.textContent = p.name;
+    let label = escHtml(p.name) + (p.title ? ` <span class="title-tag">[${escHtml(p.title)}]</span>` : '');
     if (i === turnIndex && p.alive) li.classList.add('turn');
-    if (!p.alive) { li.classList.add('dead'); li.textContent += ' (탈락)'; }
+    if (!p.alive) { li.classList.add('dead'); label += ' (탈락)'; }
+    li.innerHTML = label;
     ul.appendChild(li);
   });
 }
@@ -574,7 +675,7 @@ document.getElementById('giveup-btn').addEventListener('click', () => {
   }
 });
 
-function endGame(winnerName, history, keepPoll, pot) {
+function endGame(winnerName, history, keepPoll, pot, winnerTitle) {
   if (!keepPoll) stopAllLoops();
   const rb = document.getElementById('replay-btn'), note = document.getElementById('replay-note');
   if (LAST_MODE === 'online') {
@@ -582,7 +683,7 @@ function endGame(winnerName, history, keepPoll, pot) {
     rb.style.display = host ? 'block' : 'none';
     note.textContent = host ? '' : '방장이 다시 플레이를 누르면 대기실로 이동합니다.';
   } else { rb.style.display = 'block'; note.textContent = ''; }
-  document.getElementById('result-winner').textContent = `🏆 ${winnerName}`;
+  document.getElementById('result-winner').textContent = `🏆 ${winnerName}${winnerTitle ? ` [${winnerTitle}]` : ''}`;
   const potBadge = document.getElementById('result-pot-badge');
   if (pot > 0) {
     potBadge.classList.remove('hidden');
