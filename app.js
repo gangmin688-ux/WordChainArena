@@ -133,6 +133,7 @@ function localSubmit(word) {
   startLocalTurn();
   renderGameCommon(LOCAL.players, LOCAL.turnIndex, LOCAL.currentSyllable, LOCAL.history);
   clearWordInput();
+  maybeCpu();
 }
 
 // ============================================================
@@ -373,6 +374,7 @@ function activeMode() {
 
 document.getElementById('giveup-btn').addEventListener('click', () => {
   if (activeMode() === 'local') {
+    if (LOCAL.players[LOCAL.turnIndex].cpu) return;
     clearInterval(LOCAL.timerHandle);
     localEliminateCurrent();
   } else {
@@ -438,7 +440,7 @@ function readSettings(p) {
   };
 }
 
-[['ls', 'local-settings', 30], ['cs', 'create-settings', 20]].forEach(([p, host, sec]) => {
+[['ls', 'local-settings', 30], ['cs', 'create-settings', 20], ['cp', 'cpu-settings', 30]].forEach(([p, host, sec]) => {
   document.getElementById(host).innerHTML = settingsHTML(p, sec);
   const st = document.getElementById(p + '-start'), sy = document.getElementById(p + '-syll');
   st.addEventListener('change', () => { sy.style.display = st.value === 'syll' ? 'block' : 'none'; });
@@ -491,3 +493,66 @@ async function refreshSiteConfig() {
 }
 refreshSiteConfig();
 setInterval(refreshSiteConfig, 5000);
+
+// ============================================================
+// 컴퓨터 대전 (일반 유저용)
+// ============================================================
+document.getElementById('cpu-start-btn').addEventListener('click', () => {
+  const name = document.getElementById('cpu-name').value.trim() || '나';
+  LOCAL.players = [{ id: 'L0', name, alive: true }, { id: 'CPU', name: '컴퓨터', alive: true, cpu: true }];
+  LOCAL.cpuLevel = document.getElementById('cpu-level').value;
+  LOCAL.turnIndex = 0;
+  LOCAL.usedWords = new Set();
+  Game.setSettings(readSettings('cp'));
+  LOCAL.turnSeconds = Game.getSettings().turnSeconds;
+  const st = Game.newStart();
+  if (st.word) LOCAL.usedWords.add(st.word);
+  LOCAL.currentSyllable = st.syll;
+  LOCAL.history = [{ who: st.label, word: st.word || st.syll }];
+  CURRENT_MODE = 'local';
+  document.getElementById('word-input').disabled = false;
+  document.getElementById('submit-word-btn').disabled = false;
+  startLocalTurn();
+  goScreen('game');
+  renderGameCommon(LOCAL.players, LOCAL.turnIndex, LOCAL.currentSyllable, LOCAL.history);
+});
+
+function maybeCpu() {
+  const cur = LOCAL.players[LOCAL.turnIndex];
+  if (!cur || !cur.cpu || CURRENT_MODE !== 'local') return;
+  clearInterval(LOCAL.timerHandle);
+  document.getElementById('word-input').disabled = true;
+  document.getElementById('submit-word-btn').disabled = true;
+  document.getElementById('turn-status').textContent = '컴퓨터가 생각 중...';
+  setTimeout(() => {
+    if (CURRENT_MODE !== 'local' || LOCAL.players[LOCAL.turnIndex] !== cur) return;
+    const S = Game.getSettings(), used = LOCAL.usedWords, syll = LOCAL.currentSyllable;
+    const human = LOCAL.players.find(p => !p.cpu);
+    const ok = w => !S.banHanbang || Game.hasAnyContinuation(Game.lastSyll(w), used, w);
+    const cands = Game.candidates(syll, used).filter(ok);
+    document.getElementById('word-input').disabled = false;
+    document.getElementById('submit-word-btn').disabled = false;
+    if (!cands.length) {
+      LOCAL.history.push({ who: '컴퓨터', word: '이을 단어가 없습니다' });
+      endGame(human.name, LOCAL.history);
+      return;
+    }
+    let pick = null;
+    if (LOCAL.cpuLevel === 'smart') {
+      const g = Game.winWords(syll, used).filter(x => !S.banHanbang || x.depth > 0);
+      if (g.length) pick = g[0].word;
+    }
+    pick = pick || cands[Math.floor(Math.random() * cands.length)];
+    used.add(pick);
+    LOCAL.history.push({ who: cur.name, word: pick });
+    LOCAL.currentSyllable = Game.lastSyll(pick);
+    if (!Game.hasAnyContinuation(LOCAL.currentSyllable, used)) {
+      LOCAL.history.push({ who: '시스템', word: `${human.name}님이 이을 단어가 없습니다` });
+      endGame(cur.name, LOCAL.history);
+      return;
+    }
+    LOCAL.turnIndex = nextAliveIdx(LOCAL.players, LOCAL.turnIndex);
+    startLocalTurn();
+    renderGameCommon(LOCAL.players, LOCAL.turnIndex, LOCAL.currentSyllable, LOCAL.history);
+  }, 700 + Math.random() * 700);
+}
