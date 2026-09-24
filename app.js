@@ -150,14 +150,9 @@ const ONLINE = {
 };
 
 function ensureMyId() {
-  let id = null;
-  try { id = localStorage.getItem('kkeugeul_id'); } catch (e) { /* file:// 등에서 차단될 수 있음 */ }
-  if (!id) {
-    id = FB.uid();
-    try { localStorage.setItem('kkeugeul_id', id); } catch (e) { /* 무시 */ }
-  }
-  ONLINE.myId = id;
-  return id;
+  // 탭/접속마다 고유 ID (localStorage 공유 시 방장과 참가자 ID가 같아지는 버그 방지)
+  ONLINE.myId = FB.uid();
+  return ONLINE.myId;
 }
 ensureMyId();
 
@@ -589,7 +584,9 @@ document.querySelector('#screen-result [data-go="menu"]').addEventListener('clic
   if (LAST_MODE === 'online' && ONLINE.room && ONLINE.room.hostId === ONLINE.myId && ONLINE.code) FB.deleteRoom(ONLINE.code);
 });
 document.getElementById('lobby-leave-btn').addEventListener('click', () => {
-  if (ONLINE.room && ONLINE.room.hostId === ONLINE.myId && ONLINE.code) FB.deleteRoom(ONLINE.code);
+  if (!ONLINE.room || !ONLINE.code) return;
+  if (ONLINE.room.hostId === ONLINE.myId) FB.deleteRoom(ONLINE.code);
+  else FB.leaveRoom(ONLINE.code, ONLINE.myId);   // 참가자가 나가면 명단에서 제거
 });
 
 // ============================================================

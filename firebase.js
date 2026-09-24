@@ -131,23 +131,39 @@ const FB = (() => {
     throw new Error('방 코드를 생성하지 못했습니다. 다시 시도해주세요.');
   }
 
+  // 방장 먼저, 이후 입장 순서
+  function orderFromPlayers(players, hostId) {
+    return Object.keys(players || {}).sort((x, y) => {
+      if (x === hostId) return -1;
+      if (y === hostId) return 1;
+      return (players[x].joinedAt || 0) - (players[y].joinedAt || 0);
+    });
+  }
+
   async function joinRoom(code, name, playerId) {
     const room = await getRoom(code);
     if (!room) throw new Error('존재하지 않는 방 코드입니다.');
     if (room.status !== 'waiting') throw new Error('이미 시작된 게임입니다.');
-    const players = room.players || {};
-    players[playerId] = { name, alive: true, joinedAt: Date.now() };
-    const order = room.order || [];
-    if (!order.includes(playerId)) order.push(playerId);
-    await patchRoom(code, { players, order });
-    return { ...room, players, order };
+    // 내 항목만 원자적으로 추가 (players 전체를 덮어쓰지 않음)
+    await patchRoom(code, { ['players/' + playerId]: { name, alive: true, joinedAt: Date.now() } });
+    const fresh = await getRoom(code);
+    if (!fresh) throw new Error('방이 사라졌습니다.');
+    const order = orderFromPlayers(fresh.players, fresh.hostId);
+    await patchRoom(code, { order });
+    return { ...fresh, order };
+  }
+
+  async function leaveRoom(code, playerId) {
+    await fetch(`${BASE}/rooms/${code}/players/${playerId}.json`, { method: 'DELETE' });
   }
 
   async function startGame(code, room) {
     Game.init();
     if (room.settings) Game.setSettings(room.settings);
     const st = Game.newStart();
+    const fresh = (await getRoom(code)) || room;           // 최신 참가자 명단으로 순서 확정
     await patchRoom(code, {
+      order: orderFromPlayers(fresh.players, fresh.hostId),
       status: 'playing',
       currentSyllable: st.syll,
       usedWords: st.word ? [st.word] : [],
@@ -206,13 +222,13 @@ const FB = (() => {
   }
 
   function uid() {
-    return 'p_' + Math.random().toString(36).slice(2, 10);
+    return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
 
   return {
     getRoom, putRoom, patchRoom, deleteRoom, getConfig, setConfig, listRooms, resetRoom, sweep,
     getIP, heartbeat, listPresence, deletePresence, isBlocked, listBlocked, blockIP, unblockIP,
-    createRoom, joinRoom, startGame, submitWord,
+    createRoom, joinRoom, leaveRoom, startGame, submitWord,
     eliminateCurrentPlayer, nextAliveIndex, uid
   };
 })();
